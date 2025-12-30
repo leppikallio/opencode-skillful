@@ -10,57 +10,14 @@ Differentiators include:
 
 ## Table of Contents
 
-- [Key Differences from Built-in OpenCode](#key-differences-from-built-in-opencode) - Why choose opencode-skillful
 - [Quick Start](#quick-start) - Get started in 2 minutes
 - [Installation](#installation) - Set up the plugin
+- [Key Differences from Built-in OpenCode](#key-differences-from-built-in-opencode) - Why choose opencode-skillful
 - [Three Core Tools](#three-core-tools) - Overview of skill_find, skill_use, skill_resource
 - [Running Skill Scripts](#running-skill-scripts) - How agents execute skill scripts
 - [Usage Examples](#usage-examples) - Real-world scenarios
 - [Plugin Tools](#plugin-tools) - Detailed tool documentation
 - [Configuration](#configuration) - Advanced setup
-
-## Key Differences from Built-in OpenCode
-
-This plugin differs from the built-in OpenCode skills implementation in important ways:
-
-| Feature                  | Built-in OpenCode                  | opencode-skillful                                |
-| ------------------------ | ---------------------------------- | ------------------------------------------------ |
-| **Skill Loading**        | Pre-loaded into context by default | Lazy-loaded on-demand only                       |
-| **Memory Overhead**      | All skills always in context       | Minimal - only active skills injected            |
-| **Format Configuration** | Single format for all models       | Per-model format selection (JSON, XML, Markdown) |
-| **Skill Discovery**      | Limited discovery mechanism        | Natural language search with ranking             |
-| **Resource Access**      | Direct file system access          | Pre-indexed, secure path-based access            |
-
-### On-Demand Skill Injection
-
-Unlike the built-in implementation which loads all available skills into context by default (consuming tokens and context), opencode-skillful is **lazy-loaded**:
-
-- Skills are discovered but **never injected unless explicitly requested**
-- Only the skills you load with `skill_use` are added to context
-- Massive savings on token usage for conversations that don't need skills
-- Context remains clean and focused
-
-### Provider-Model Specific Format Configuration
-
-Different LLM providers prefer different formats. opencode-skillful lets you optimize per model:
-
-```json
-{
-  "promptRenderer": "xml",
-  "modelRenderers": {
-    "claude-3-5-sonnet": "xml",
-    "gpt-4": "json",
-    "llama-2-70b": "md"
-  }
-}
-```
-
-- **XML** - Claude's native format, most structured
-- **JSON** - GPT's preference, strict validation
-- **Markdown** - Human-readable, conversational
-
-The plugin automatically detects your active model and renders skills in the optimal format for that provider.
-
 - [Architecture](#architecture) - How it works internally
 - [Creating Skills](#creating-skills) - Build your own skills
 
@@ -103,6 +60,45 @@ Create or edit your OpenCode configuration file (typically `~/.config/opencode/c
   "plugins": ["@zenobius/opencode-skillful"]
 }
 ```
+
+## Key Differences from Built-in OpenCode
+
+This plugin takes a different approach than OpenCode's built-in skills implementation:
+
+| Aspect                   | Built-in OpenCode                               | opencode-skillful                             |
+| ------------------------ | ----------------------------------------------- | --------------------------------------------- |
+| **Skill Loading**        | All skills pre-loaded into context by default   | Skills loaded on-demand only                  |
+| **Memory Overhead**      | All skills consume tokens in every conversation | Only loaded skills consume tokens             |
+| **Format Configuration** | Fixed format (usually markdown)                 | Per-model configuration (JSON, XML, Markdown) |
+| **Skill Discovery**      | Limited, built-in set                           | Extensible, custom skills in any directory    |
+| **Resource Access**      | Direct filesystem (less secure)                 | Pre-indexed resources (security-first)        |
+
+### On-Demand Skill Injection
+
+Unlike built-in skills that load automatically, opencode-skillful uses **lazy loading**:
+
+- Skills are discovered at initialization but not injected until you explicitly request them
+- Only the skills you use consume tokens in your conversation
+- Reduces context bloat and improves efficiency with large skill libraries
+- Perfect for workflows with 50+ skills where you might use 2-3 per conversation
+
+### Provider-Model Specific Format Configuration
+
+Different LLM providers prefer different formats. Configure which format each model receives:
+
+```json
+{
+  "promptRenderer": "xml",
+  "modelRenderers": {
+    "claude-3-5-sonnet": "xml",
+    "gpt-4": "json",
+    "gpt-4-turbo": "json",
+    "llama-2-70b": "md"
+  }
+}
+```
+
+This allows you to optimize skill injection for each model without creating duplicate skill documentation.
 
 ## Running Skill Scripts
 
