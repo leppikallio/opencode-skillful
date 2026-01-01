@@ -12,12 +12,12 @@ import { readSkillFile } from '../lib/SkillFs';
  * - return the content and mime type of the resource.
  */
 export function createSkillResourceResolver(provider: SkillRegistry) {
-  const resolveResourceMap = (skill: Skill, type: 'script' | 'asset' | 'reference') => {
-    if (type === 'script') {
+  const resolveResourceMap = (skill: Skill, type: string) => {
+    if (type === 'script' || type === 'scripts') {
       return skill.scripts;
-    } else if (type === 'asset') {
+    } else if (type === 'asset' || type === 'assets') {
       return skill.assets;
-    } else if (type === 'reference') {
+    } else if (type === 'reference' || type === 'references') {
       return skill.references;
     } else {
       throw new Error(`Unknown resource type: ${type}`);
@@ -26,7 +26,7 @@ export function createSkillResourceResolver(provider: SkillRegistry) {
 
   return async (args: {
     skill_name: string;
-    type: 'script' | 'asset' | 'reference';
+    type: string;
     relative_path: string;
   }): Promise<{
     absolute_path: string;

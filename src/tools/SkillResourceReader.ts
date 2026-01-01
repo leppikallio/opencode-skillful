@@ -32,7 +32,7 @@
 
 import path from 'node:path';
 import { createSkillResourceResolver } from '../services/SkillResourceResolver';
-import { assertIsValidResourceType, SkillRegistry } from '../types';
+import { SkillRegistry } from '../types';
 
 export function createSkillResourceReader(provider: SkillRegistry) {
   const skillResourceResolver = createSkillResourceResolver(provider);
@@ -41,8 +41,6 @@ export function createSkillResourceReader(provider: SkillRegistry) {
     await provider.controller.ready.whenReady();
 
     const [type, ...restPath] = args.relative_path.split('/');
-
-    assertIsValidResourceType(type);
 
     const resource = await skillResourceResolver({
       skill_name: args.skill_name,
