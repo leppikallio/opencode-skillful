@@ -20,6 +20,26 @@ import { ReadyStateMachine } from './lib/ReadyStateMachine';
  * This abstraction decouples rendering format from tool execution logic,
  * enabling easy format additions without changing plugin code.
  */
+
+type SkillInjectionResult = {
+  skill_name: string;
+  resource_path: string;
+  resource_mimetype: string;
+  content: string;
+};
+
+type SkillSearchResultInjection = {
+  query: string | string[];
+  skills: Array<{ name: string; description: string }>;
+  summary: { total: number; matches: number; feedback: string };
+  debug?: SkillRegistryDebugInfo;
+};
+
+type Args =
+  | { data: Skill; type: 'Skill' }
+  | { data: SkillInjectionResult; type: 'SkillResource' }
+  | { data: SkillSearchResultInjection; type: 'SkillSearchResults' };
+
 export interface PromptRenderer {
   /**
    * Render an object to a string using the preferred format
@@ -28,7 +48,7 @@ export interface PromptRenderer {
    * @param rootElement Optional element name (used for XML rendering as root tag)
    * @returns Formatted string ready for prompt injection
    */
-  render(data: object, rootElement?: string): string;
+  render(args: Args): string;
 
   /**
    * The format identifier for this renderer
@@ -54,7 +74,26 @@ export interface PromptRenderer {
  *     "references/api.md" => { absolutePath: "/skills/cli/references/api.md", mimeType: "text/markdown" }
  *   }
  */
-export type SkillResourceMap = Map<string, { absolutePath: string; mimeType: string }>;
+export type SkillResource = {
+  relativePath: string;
+  absolutePath: string;
+  mimeType: string;
+};
+export type SkillResourceMap = Map<string, Omit<SkillResource, 'relativePath'>>;
+
+const ResourceTypes = ['script', 'asset', 'reference'] as const;
+type ResourceType = (typeof ResourceTypes)[number];
+
+/**
+ * Asserts that the provided type is a valid ResourceType
+ */
+export const assertIsValidResourceType: (type: string) => asserts type is ResourceType = (type) => {
+  if (!ResourceTypes.includes(type as ResourceType)) {
+    throw new Error(`Invalid resource type: ${type}`);
+  }
+};
+export type MapValue<T> = T extends Map<unknown, infer V> ? V : never;
+export type MapKey<T> = T extends Map<infer K, unknown> ? K : never;
 
 /**
  * Skill definition parsed from SKILL.md
@@ -169,16 +208,4 @@ export type SkillRegistry = {
   search: SkillSearcher;
   debug?: SkillRegistryDebugInfo;
   logger: PluginLogger;
-};
-
-const ResourceTypes = ['script', 'asset', 'reference'] as const;
-type ResourceType = (typeof ResourceTypes)[number];
-
-/**
- * Asserts that the provided type is a valid ResourceType
- */
-export const assertIsValidResourceType: (type: string) => asserts type is ResourceType = (type) => {
-  if (!ResourceTypes.includes(type as ResourceType)) {
-    throw new Error(`Invalid resource type: ${type}`);
-  }
 };

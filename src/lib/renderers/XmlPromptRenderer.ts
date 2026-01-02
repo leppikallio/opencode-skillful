@@ -6,18 +6,55 @@
  * current behavior as the default and recommended format for Claude models.
  */
 
-import type { PromptRenderer } from '../../types';
+import type { PromptRenderer, Skill, SkillResource, SkillSearchResult } from '../../types';
 import { jsonToXml } from '../xml';
+import { resourceMapToArray } from './resourceMapToArray';
 
-export const createXmlPromptRenderer = (): PromptRenderer => {
-  const format = 'xml' as const;
+export const createXmlPromptRenderer = () => {
+  /**
+   * Skills need special preparation before rendering
+   * 1. resource maps need to be converted to arrays
+   */
+  const prepareSkill = (skill: Skill): object => {
+    // Add any skill-specific preparation logic here if needed
 
-  const render = (data: object, rootElement: string = 'root'): string => {
-    return jsonToXml(data, rootElement);
+    return {
+      ...skill,
+      references: resourceMapToArray(skill.references),
+      scripts: resourceMapToArray(skill.scripts),
+      assets: resourceMapToArray(skill.assets),
+    };
   };
 
-  return {
-    format,
-    render,
+  const prepareResource = (resource: SkillResource): object => {
+    // Add any resource-specific preparation logic here if needed
+    return resource;
   };
+
+  const prepareSearchResult = (result: SkillSearchResult): object => {
+    // Add any search result-specific preparation logic here if needed
+    return result;
+  };
+
+  const renderer: PromptRenderer = {
+    format: 'xml' as const,
+
+    render(args) {
+      const rootElement = args.type || 'root';
+
+      if (args.type === 'Skill') {
+        return jsonToXml(prepareSkill(args.data), rootElement);
+      }
+      if (args.type === 'SkillResource') {
+        return jsonToXml(prepareResource(args.data), rootElement);
+      }
+      if (args.type === 'SkillSearchResults') {
+        return jsonToXml(prepareSearchResult(args.data), rootElement);
+      }
+
+      return jsonToXml({}, rootElement);
+    },
+  };
+
+  return renderer;
 };

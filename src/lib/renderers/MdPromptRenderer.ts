@@ -15,11 +15,12 @@
  * - Skill content → appended after --- separator with ### Content heading
  */
 
-import type { PromptRenderer } from '../../types';
+import dedent from 'dedent';
+import type { PromptRenderer, SkillResource, SkillSearchResult } from '../../types';
+import type { Skill } from '../../types';
+import { resourceMapToArray } from './resourceMapToArray';
 
 export const createMdPromptRenderer = (): PromptRenderer => {
-  const format = 'md' as const;
-
   /**
    * Recursively render an object with proper heading levels and list nesting
    *
@@ -135,34 +136,60 @@ export const createMdPromptRenderer = (): PromptRenderer => {
       .replace(/'/g, '&#39;');
   };
 
-  const render = <T extends { content?: string }>(
-    data: T,
-    rootElement: string = 'Prompt'
-  ): string => {
-    // Separate out the 'content' field if it exists (for skills)
-    const { content, ...restData } = data;
+  const renderSkill = (skill: Skill): string => {
+    // Add any skill-specific preparation logic here if needed
+    return dedent`
+      # ${skill.name}
 
-    // Render the metadata section
-    return `# ${rootElement}
+      ${skill.content}
 
-${renderObject(restData, 3)}
+      ## Metadata
 
-${
-  (content &&
-    `---
+      ${skill.metadata ? renderObject(skill.metadata, 3) : ''}
+ 
+      ## References
 
-### Content
+      ${skill.references ? renderArray(resourceMapToArray(skill.references), 1) : ''}
 
-${content}
+      ## Scripts
 
-`) ||
-  ''
-}
+      ${skill.scripts ? renderArray(resourceMapToArray(skill.scripts), 1) : ''}
+
+      ## Assets
+
+      ${skill.assets ? renderArray(resourceMapToArray(skill.assets), 1) : ''}
     `;
   };
 
-  return {
-    format,
-    render,
+  const renderResource = (resource: SkillResource): string => {
+    // Add any resource-specific preparation logic here if needed
+    return renderObject(resource, 3);
   };
+
+  const renderSearchResult = (result: SkillSearchResult): string => {
+    // Add any search result-specific preparation logic here if needed
+    return renderObject(result, 3);
+  };
+
+  const renderer: PromptRenderer = {
+    format: 'md' as const,
+    render(args) {
+      if (args.type === 'Skill') {
+        return renderSkill(args.data);
+      }
+
+      if (args.type === 'SkillResource') {
+        return renderResource(args.data);
+      }
+
+      if (args.type === 'SkillSearchResults') {
+        return renderSearchResult(args.data);
+      }
+
+      // Fallback for other types - render generically
+      return renderObject({}, 3);
+    },
+  };
+
+  return renderer;
 };

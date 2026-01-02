@@ -92,7 +92,7 @@ export const SkillsPlugin: Plugin = async (ctx) => {
 
           const results = await api.loadSkill(args.skill_names);
           for await (const skill of results.loaded) {
-            await sendPrompt(renderer(skill, 'Skill'), {
+            await sendPrompt(renderer({ data: skill, type: 'Skill' }), {
               sessionId: toolCtx.sessionID,
             });
           }
@@ -125,7 +125,7 @@ export const SkillsPlugin: Plugin = async (ctx) => {
           const renderer = promptRenderer.getFormatter(format);
 
           const results = await api.findSkills(args);
-          const output = renderer(results, 'SkillSearchResults');
+          const output = renderer({ data: results, type: 'SkillSearchResults' });
           return output;
         },
       }),
@@ -157,7 +157,7 @@ export const SkillsPlugin: Plugin = async (ctx) => {
             throw new Error('Failed to read resource');
           }
 
-          await sendPrompt(renderer(result.injection, 'Resource'), {
+          await sendPrompt(renderer({ data: result.injection, type: 'SkillResource' }), {
             sessionId: toolCtx.sessionID,
           });
 

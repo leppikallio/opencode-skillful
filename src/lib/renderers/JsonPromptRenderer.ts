@@ -8,13 +8,12 @@
 import type { PromptRenderer } from '../../types';
 
 export const createJsonPromptRenderer = (): PromptRenderer => {
-  const format = 'json' as const;
-  const render = (data: object, rootElement = 'root'): string => {
-    return JSON.stringify({ [rootElement]: data }, null, 2);
+  const renderer: PromptRenderer = {
+    format: 'json' as const,
+    render(args) {
+      return JSON.stringify({ [args.type]: args.data }, null, 2);
+    },
   };
 
-  return {
-    format,
-    render,
-  };
+  return renderer;
 };
