@@ -30,7 +30,6 @@
  * @returns Async function callable by OpenCode as skill_resource tool
  */
 
-import path from 'node:path';
 import { createSkillResourceResolver } from '../services/SkillResourceResolver';
 import { SkillRegistry } from '../types';
 
@@ -40,12 +39,12 @@ export function createSkillResourceReader(provider: SkillRegistry) {
   return async (args: { skill_name: string; relative_path: string }) => {
     await provider.controller.ready.whenReady();
 
-    const [type, ...restPath] = args.relative_path.split('/');
+    const normalizedPath = args.relative_path.replace(/\\/g, '/').replace(/^\/+/, '');
 
     const resource = await skillResourceResolver({
       skill_name: args.skill_name,
-      type,
-      relative_path: path.join(...restPath),
+      type: 'resource',
+      relative_path: normalizedPath,
     });
 
     // Inject content silently

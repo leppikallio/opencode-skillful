@@ -173,3 +173,5 @@ export const SkillsPlugin: Plugin = async (ctx) => {
     },
   };
 };
+
+export default SkillsPlugin;

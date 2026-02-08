@@ -18,6 +18,7 @@ export function createMockSkill(overrides: Partial<Skill> = {}): Skill {
     scripts: new Map(),
     references: new Map(),
     assets: new Map(),
+    resources: new Map(),
     ...overrides,
   };
 }

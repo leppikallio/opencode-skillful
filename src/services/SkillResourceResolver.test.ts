@@ -150,5 +150,52 @@ describe('SkillResourceResolver', () => {
         expect((error as Error).message).toContain('Resource not found');
       }
     });
+
+    test('should resolve workflow resources through unified map', async () => {
+      const resolver = await createMockResolver();
+      const resource = await resolver({
+        skill_name: 'PAI',
+        type: 'workflow',
+        relative_path: 'Onboarding.md',
+      });
+
+      expect(resource.content).toContain('# Onboarding');
+      expect(resource.absolute_path).toContain('/PAI/Workflows/Onboarding.md');
+    });
+
+    test('should resolve tool resources through unified map', async () => {
+      const resolver = await createMockResolver();
+      const resource = await resolver({
+        skill_name: 'PAI',
+        type: 'tool',
+        relative_path: 'Inference.ts',
+      });
+
+      expect(resource.content).toContain('inference');
+      expect(resource.absolute_path).toContain('/PAI/Tools/Inference.ts');
+    });
+
+    test('should resolve generic resource paths without explicit type', async () => {
+      const resolver = await createMockResolver();
+      const resource = await resolver({
+        skill_name: 'PAI',
+        type: 'resource',
+        relative_path: 'SYSTEM/PAISYSTEMARCHITECTURE.md',
+      });
+
+      expect(resource.content).toContain('# Architecture');
+      expect(resource.absolute_path).toContain('/PAI/SYSTEM/PAISYSTEMARCHITECTURE.md');
+    });
+
+    test('should support direct full-path lookup when type carries path', async () => {
+      const resolver = await createMockResolver();
+      const resource = await resolver({
+        skill_name: 'PAI',
+        type: 'Workflows/Onboarding.md',
+        relative_path: '',
+      });
+
+      expect(resource.absolute_path).toContain('/PAI/Workflows/Onboarding.md');
+    });
   });
 });

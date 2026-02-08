@@ -50,7 +50,7 @@ import {
  *   const skill = registry.controller.get('writing-git-commits');
  */
 
-import { dirname, basename, relative } from 'node:path';
+import { dirname, basename, extname, relative } from 'node:path';
 import matter from 'gray-matter';
 import { toolName } from '../lib/Identifiers';
 import {
@@ -63,6 +63,29 @@ import {
 import { createSkillSearcher } from './SkillSearcher';
 import { createReadyStateMachine } from '../lib/ReadyStateMachine';
 
+/**
+ * Some skill generators prepend an HTML comment banner before frontmatter.
+ *
+ * gray-matter expects frontmatter at the very beginning of the file, so these
+ * banners make valid SKILL.md files look like they have no frontmatter.
+ *
+ * This normalizer strips only leading HTML comment blocks (and optional BOM),
+ * preserving the rest of the file untouched.
+ */
+export function stripLeadingHtmlCommentBlocks(content: string): string {
+  let normalized = content.replace(/^\uFEFF/, '');
+
+  while (true) {
+    const next = normalized.replace(/^\s*<!--[\s\S]*?-->\s*/, '');
+    if (next === normalized) {
+      break;
+    }
+    normalized = next;
+  }
+
+  return normalized;
+}
+
 // Validation Schema
 const SkillFrontmatterSchema = tool.schema.object({
   name: tool.schema.string().optional(),
@@ -74,8 +97,188 @@ const SkillFrontmatterSchema = tool.schema.object({
   metadata: tool.schema.record(tool.schema.string(), tool.schema.string()).optional(),
 });
 
+const RESOURCE_EXCLUDED_SEGMENTS = new Set([
+  'user',
+  'work',
+  'memory',
+  'node_modules',
+  '.git',
+  'dist',
+]);
+
+const TEXT_RESOURCE_EXTENSIONS = new Set([
+  '.md',
+  '.mdx',
+  '.txt',
+  '.ts',
+  '.tsx',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.cjs',
+  '.py',
+  '.sh',
+  '.bash',
+  '.zsh',
+  '.json',
+  '.yaml',
+  '.yml',
+  '.toml',
+  '.ini',
+  '.cfg',
+  '.conf',
+  '.sql',
+  '.rb',
+  '.go',
+  '.rs',
+  '.java',
+  '.kt',
+  '.swift',
+  '.ps1',
+  '.xml',
+  '.csv',
+  '.html',
+  '.css',
+  '.scss',
+]);
+
+const toPosixPath = (value: string): string => value.replace(/\\/g, '/');
+
+const isExcludedResourcePath = (relativePath: string): boolean => {
+  const segments = relativePath
+    .toLowerCase()
+    .split('/')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  return segments.some((segment) => RESOURCE_EXCLUDED_SEGMENTS.has(segment));
+};
+
+const isLikelyTextResourcePath = (relativePath: string): boolean => {
+  const ext = extname(relativePath).toLowerCase();
+  return ext.length > 0 && TEXT_RESOURCE_EXTENSIONS.has(ext);
+};
+
+const isRootMarkdownDoc = (relativePath: string): boolean => {
+  const lower = relativePath.toLowerCase();
+  return !lower.includes('/') && lower.endsWith('.md') && lower !== 'skill.md';
+};
+
+const selectUnifiedResourcePaths = (args: {
+  skillFullPath: string;
+  shortName: string;
+}): string[] => {
+  const { skillFullPath, shortName } = args;
+  const isPAI = shortName.toLowerCase() === 'pai';
+
+  const candidates = new Set<string>([
+    ...listSkillFiles(skillFullPath, 'Workflows'),
+    ...listSkillFiles(skillFullPath, 'Tools'),
+  ]);
+
+  // Root docs: scan once, then keep only root-level markdown files (excludes SKILL.md)
+  for (const absolutePath of listSkillFiles(skillFullPath, '')) {
+    const relativePath = toPosixPath(relative(skillFullPath, absolutePath));
+    if (isRootMarkdownDoc(relativePath)) {
+      candidates.add(absolutePath);
+    }
+  }
+
+  // PAI-specific extensions
+  if (isPAI) {
+    for (const absolutePath of listSkillFiles(skillFullPath, 'SYSTEM')) {
+      const relativePath = toPosixPath(relative(skillFullPath, absolutePath));
+      if (relativePath.toLowerCase().endsWith('.md')) {
+        candidates.add(absolutePath);
+      }
+    }
+
+    for (const absolutePath of listSkillFiles(skillFullPath, 'Components')) {
+      const relativePath = toPosixPath(relative(skillFullPath, absolutePath));
+      if (relativePath.toLowerCase().endsWith('.md')) {
+        candidates.add(absolutePath);
+      }
+    }
+  }
+
+  return Array.from(candidates).filter((absolutePath) => {
+    const relativePath = toPosixPath(relative(skillFullPath, absolutePath));
+    if (!relativePath || relativePath.startsWith('../') || relativePath.startsWith('/')) {
+      return false;
+    }
+    if (isExcludedResourcePath(relativePath)) {
+      return false;
+    }
+    return isLikelyTextResourcePath(relativePath);
+  });
+};
+
 export function createSkillRegistryController() {
   const store = new Map<string, Skill>();
+  const aliases = new Map<string, string>();
+  const aliasesByKey = new Map<string, Set<string>>();
+
+  const aliasCandidates = (value: string): string[] => {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+
+    const snake = trimmed.replace(/-/g, '_');
+    const kebab = trimmed.replace(/_/g, '-');
+    const lowered = trimmed.toLowerCase();
+    const loweredSnake = snake.toLowerCase();
+    const loweredKebab = kebab.toLowerCase();
+
+    return Array.from(new Set([trimmed, snake, kebab, lowered, loweredSnake, loweredKebab]));
+  };
+
+  const registerAliasesForKey = (key: string, skill: Skill) => {
+    const nextAliases = new Set<string>([
+      ...aliasCandidates(key),
+      ...aliasCandidates(skill.name),
+      ...aliasCandidates(skill.toolName),
+    ]);
+
+    for (const alias of nextAliases) {
+      const existing = aliases.get(alias);
+      if (existing && existing !== key) {
+        throw new Error(
+          `[AliasCollision] Alias "${alias}" is already mapped to "${existing}" and cannot map to "${key}"`
+        );
+      }
+    }
+
+    aliasesByKey.set(key, nextAliases);
+    for (const alias of nextAliases) {
+      aliases.set(alias, key);
+    }
+  };
+
+  const unregisterAliasesForKey = (key: string) => {
+    const existingAliases = aliasesByKey.get(key);
+    if (!existingAliases) return;
+
+    for (const alias of existingAliases) {
+      if (aliases.get(alias) === key) {
+        aliases.delete(alias);
+      }
+    }
+
+    aliasesByKey.delete(key);
+  };
+
+  const resolveCanonicalKey = (input: string): string | null => {
+    if (store.has(input)) {
+      return input;
+    }
+
+    for (const candidate of aliasCandidates(input)) {
+      const resolved = aliases.get(candidate);
+      if (resolved && store.has(resolved)) {
+        return resolved;
+      }
+    }
+
+    return null;
+  };
 
   const controller: SkillRegistryController = {
     ready: createReadyStateMachine(),
@@ -86,12 +289,29 @@ export function createSkillRegistryController() {
       return Array.from(store.keys()).sort();
     },
     delete(_key) {
-      store.delete(_key);
+      const canonical = resolveCanonicalKey(_key);
+      if (!canonical) {
+        return;
+      }
+      unregisterAliasesForKey(canonical);
+      store.delete(canonical);
     },
-    clear: () => store.clear(),
-    has: (key) => store.has(key),
-    get: (key) => store.get(key),
+    clear: () => {
+      store.clear();
+      aliases.clear();
+      aliasesByKey.clear();
+    },
+    has: (key) => resolveCanonicalKey(key) !== null,
+    get: (key) => {
+      const canonical = resolveCanonicalKey(key);
+      if (!canonical) {
+        return undefined;
+      }
+      return store.get(canonical);
+    },
     set: (key, skill) => {
+      unregisterAliasesForKey(key);
+      registerAliasesForKey(key, skill);
       store.set(key, skill);
     },
   };
@@ -329,7 +549,7 @@ async function parseSkill(args: {
   }
 
   // Parse YAML frontmatter
-  const parsed = matter(args.content);
+  const parsed = matter(stripLeadingHtmlCommentBlocks(args.content));
 
   // Validate frontmatter schema
   const frontmatter = SkillFrontmatterSchema.safeParse(parsed.data);
@@ -351,6 +571,10 @@ async function parseSkill(args: {
   const scriptPaths = listSkillFiles(skillFullPath, 'scripts');
   const referencePaths = listSkillFiles(skillFullPath, 'references');
   const assetPaths = listSkillFiles(skillFullPath, 'assets');
+  const unifiedResourcePaths = selectUnifiedResourcePaths({
+    skillFullPath,
+    shortName,
+  });
 
   return {
     allowedTools: frontmatter.data['allowed-tools'],
@@ -365,6 +589,7 @@ async function parseSkill(args: {
     scripts: createSkillResourceMap(skillFullPath, scriptPaths),
     references: createSkillResourceMap(skillFullPath, referencePaths),
     assets: createSkillResourceMap(skillFullPath, assetPaths),
+    resources: createSkillResourceMap(skillFullPath, unifiedResourcePaths),
   };
 }
 
@@ -372,7 +597,7 @@ export function createSkillResourceMap(skillPath: string, filePaths: string[]): 
   const output: SkillResourceMap = new Map();
 
   for (const filePath of filePaths) {
-    const relativePath = relative(skillPath, filePath);
+    const relativePath = toPosixPath(relative(skillPath, filePath));
     output.set(relativePath, {
       absolutePath: filePath,
       mimeType: detectMimeType(filePath),

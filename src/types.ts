@@ -117,6 +117,7 @@ export type Skill = {
   scripts: SkillResourceMap; // Indexed script resources (e.g., build.sh, test.sh)
   references: SkillResourceMap; // Indexed reference resources (e.g., documentation, guides)
   assets: SkillResourceMap; // Indexed asset resources (e.g., images, icons)
+  resources?: SkillResourceMap; // Unified indexed resources for plugin-specific layouts
 };
 
 /**

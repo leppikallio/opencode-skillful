@@ -16,6 +16,25 @@ This is a test skill.
       './test-skill/references/guide.md': '# Guide\nThis is a guide.',
       './test-skill/scripts/build.sh': '#!/bin/bash\necho "Building..."',
       './test-skill/assets/logo.svg': '<svg></svg>',
+      './test-skill/Workflows/QuickStart.md': '# Quick Start\nDo this first.',
+      './test-skill/Tools/Helper.ts': 'export const helper = true;\n',
+      './test-skill/README.md': '# Test Skill\nRoot-level docs.',
+
+      './PAI/SKILL.md': `<!-- generated banner -->
+---
+name: CORE
+description: Personal AI Infrastructure core. The authoritative reference for how PAI works.
+---
+# PAI Core
+`,
+      './PAI/Workflows/Onboarding.md': '# Onboarding\n',
+      './PAI/Tools/Inference.ts': 'export const name = "inference";\n',
+      './PAI/CoreStack.md': '# Core Stack\n',
+      './PAI/SYSTEM/PAISYSTEMARCHITECTURE.md': '# Architecture\n',
+      './PAI/Components/10-intro.md': '# Intro\n',
+      './PAI/USER/README.md': '# Sensitive user profile\n',
+      './PAI/WORK/notes.md': '# Work scratch\n',
+      './PAI/node_modules/fake/readme.md': '# Ignore me\n',
     },
     '/skills'
   );
@@ -60,9 +79,14 @@ This is a test skill.
      */
     listSkillFiles: (skillPath: string, subdirectory: string): string[] => {
       console.log(`[MOCK] skillfs.listSkillFiles`, skillPath, subdirectory);
-      const results = memdisk.globSync('**/*', {
-        cwd: `${skillPath}/${subdirectory}`,
-      });
+      let results: string[] = [];
+      try {
+        results = memdisk.globSync('**/*', {
+          cwd: `${skillPath}/${subdirectory}`,
+        });
+      } catch {
+        return [];
+      }
 
       return results.map((relativePath) => path.join(skillPath, subdirectory, relativePath));
     },
