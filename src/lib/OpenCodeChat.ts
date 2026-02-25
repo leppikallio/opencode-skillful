@@ -7,7 +7,9 @@ export function createInstructionInjector(ctx: PluginInput) {
       path: { id: props.sessionId },
       body: {
         noReply: true,
-        parts: [{ type: 'text', text }],
+        // Mark injected context as synthetic so OpenCode TUI can hide it,
+        // while still including it in model context (OpenCode filters on `ignored`, not `synthetic`).
+        parts: [{ type: 'text', text, synthetic: true }],
       },
     });
   };
