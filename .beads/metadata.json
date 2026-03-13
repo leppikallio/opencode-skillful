@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "server",
+  "dolt_database": "opencode_skillful",
+  "project_id": "4c07575f-617b-46dd-a121-f0dae3432bf7"
+}

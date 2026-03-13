@@ -11,3 +11,7 @@ coverage/
 .bun.lockb
 !.memory/
 in-memoria*
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db
