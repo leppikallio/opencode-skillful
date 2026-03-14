@@ -16,3 +16,6 @@ in-memoria*
 
 # Dolt database files (added by bd init)
 .dolt/
+
+# Local beads interaction logs
+.beads/interactions.jsonl
