@@ -19,3 +19,4 @@ in-memoria*
 
 # Local beads interaction logs
 .beads/interactions.jsonl
+.beads/push-state.json
