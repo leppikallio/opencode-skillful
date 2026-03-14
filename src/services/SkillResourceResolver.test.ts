@@ -1,5 +1,5 @@
-import { test, describe } from 'bun:test';
-import { expect } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
+import '../mocks.skillfs';
 import { createSkillResourceResolver } from './SkillResourceResolver';
 import { createSkillRegistry } from './SkillRegistry';
 
@@ -65,30 +65,26 @@ describe('SkillResourceResolver', () => {
 
     test('should handle skill not found error', async () => {
       const resolver = await createMockResolver();
-      try {
-        await resolver({
+
+      await expect(
+        resolver({
           skill_name: 'nonexistent-skill',
           type: 'reference',
           relative_path: 'references/guide.md',
-        });
-        expect.unreachable('Should have thrown');
-      } catch (error) {
-        expect((error as Error).message).toContain('Skill not found');
-      }
+        })
+      ).rejects.toThrow(/Skill not found/i);
     });
 
     test('should prevent path traversal attempts with ../', async () => {
       const resolver = await createMockResolver();
-      try {
-        await resolver({
+
+      await expect(
+        resolver({
           skill_name: 'test_skill',
           type: 'reference',
           relative_path: '../../../etc/passwd',
-        });
-        expect.unreachable('Should have thrown');
-      } catch (error) {
-        expect((error as Error).message).toContain('Resource not found');
-      }
+        })
+      ).rejects.toThrow(/Resource not found/i);
     });
 
     test('should prevent multiple path traversal escape attempts', async () => {
@@ -96,106 +92,133 @@ describe('SkillResourceResolver', () => {
       const traversalAttempts = ['../../../etc/passwd', '../../secrets.txt', '../.ssh/id_rsa'];
 
       for (const attempt of traversalAttempts) {
-        try {
-          await resolver({
+        await expect(
+          resolver({
             skill_name: 'test_skill',
             type: 'reference',
             relative_path: attempt,
-          });
-          expect.unreachable('Should have thrown');
-        } catch (error) {
-          expect((error as Error).message).toContain('Resource not found');
-        }
+          })
+        ).rejects.toThrow(/Resource not found/i);
       }
     });
 
     test('should handle missing resource files with clear error', async () => {
       const resolver = await createMockResolver();
-      try {
-        await resolver({
+
+      await expect(
+        resolver({
           skill_name: 'test_skill',
           type: 'reference',
           relative_path: 'references/nonexistent.md',
-        });
-        expect.unreachable('Should have thrown');
-      } catch (error) {
-        expect((error as Error).message).toContain('Resource not found');
-      }
+        })
+      ).rejects.toThrow(/Resource not found/i);
     });
 
     test('should safely handle absolute paths (normalized to skill dir)', async () => {
       const resolver = await createMockResolver();
-      try {
-        await resolver({
+
+      await expect(
+        resolver({
           skill_name: 'test_skill',
           type: 'reference',
           relative_path: '/etc/passwd',
-        });
-        expect.unreachable('Should have thrown');
-      } catch (error) {
-        expect((error as Error).message).toContain('Resource not found');
-      }
+        })
+      ).rejects.toThrow(/Resource not found/i);
     });
 
     test('should validate that resolved path stays within skill boundary', async () => {
       const resolver = await createMockResolver();
-      try {
-        await resolver({
+
+      await expect(
+        resolver({
           skill_name: 'test_skill',
           type: 'reference',
           relative_path: '../other-skill/file.md',
-        });
-        expect.unreachable('Should have thrown');
-      } catch (error) {
-        expect((error as Error).message).toContain('Resource not found');
-      }
+        })
+      ).rejects.toThrow(/Resource not found/i);
     });
 
     test('should resolve workflow resources through unified map', async () => {
       const resolver = await createMockResolver();
       const resource = await resolver({
-        skill_name: 'PAI',
+        skill_name: 'phase_a_skill',
         type: 'workflow',
         relative_path: 'Onboarding.md',
       });
 
-      expect(resource.content).toContain('# Onboarding');
-      expect(resource.absolute_path).toContain('/PAI/Workflows/Onboarding.md');
+      expect(resource.content).toContain('# Canonical Phase A Onboarding');
+      expect(resource.absolute_path).toContain('/phase-a-skill/Workflows/Onboarding.md');
     });
 
     test('should resolve tool resources through unified map', async () => {
       const resolver = await createMockResolver();
       const resource = await resolver({
-        skill_name: 'PAI',
+        skill_name: 'phase_a_skill',
         type: 'tool',
-        relative_path: 'Inference.ts',
+        relative_path: 'Runner.ts',
       });
 
-      expect(resource.content).toContain('inference');
-      expect(resource.absolute_path).toContain('/PAI/Tools/Inference.ts');
+      expect(resource.content).toContain('runner');
+      expect(resource.absolute_path).toContain('/phase-a-skill/Tools/Runner.ts');
     });
 
     test('should resolve generic resource paths without explicit type', async () => {
       const resolver = await createMockResolver();
       const resource = await resolver({
-        skill_name: 'PAI',
+        skill_name: 'phase_a_skill',
         type: 'resource',
-        relative_path: 'SYSTEM/PAISYSTEMARCHITECTURE.md',
+        relative_path: 'README.md',
       });
 
-      expect(resource.content).toContain('# Architecture');
-      expect(resource.absolute_path).toContain('/PAI/SYSTEM/PAISYSTEMARCHITECTURE.md');
+      expect(resource.content).toContain('# Canonical Phase A');
+      expect(resource.absolute_path).toContain('/phase-a-skill/README.md');
     });
 
     test('should support direct full-path lookup when type carries path', async () => {
       const resolver = await createMockResolver();
       const resource = await resolver({
-        skill_name: 'PAI',
+        skill_name: 'phase_a_skill',
         type: 'Workflows/Onboarding.md',
         relative_path: '',
       });
 
-      expect(resource.absolute_path).toContain('/PAI/Workflows/Onboarding.md');
+      expect(resource.absolute_path).toContain('/phase-a-skill/Workflows/Onboarding.md');
+    });
+
+    test('should resolve resources by canonical frontmatter name and legacy aliases', async () => {
+      const resolver = await createMockResolver();
+
+      await expect(
+        resolver({
+          skill_name: 'CanonicalPhaseA',
+          type: 'workflow',
+          relative_path: 'Onboarding.md',
+        })
+      ).resolves.toMatchObject({
+        content: expect.stringContaining('# Canonical Phase A Onboarding'),
+      });
+
+      const legacy = await resolver({
+        skill_name: 'phase_a_skill',
+        type: 'workflow',
+        relative_path: 'Onboarding.md',
+      });
+
+      expect(legacy.content).toContain('# Canonical Phase A Onboarding');
+    });
+
+    test('should resolve non-PAI skills by canonical frontmatter name', async () => {
+      const resolver = await createMockResolver();
+
+      await expect(
+        resolver({
+          skill_name: 'CanonicalSkill',
+          type: 'reference',
+          relative_path: 'references/guide.md',
+        })
+      ).resolves.toMatchObject({
+        content: expect.stringContaining('This is canonical'),
+      });
     });
   });
 });

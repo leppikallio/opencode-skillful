@@ -35,7 +35,7 @@ import { loadConfig } from 'bunfig';
 import type { PluginInput } from '@opencode-ai/plugin';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { PluginConfig } from './types';
+import type { PluginConfig } from './types.ts';
 
 /**
  * Gets OpenCode-compatible config paths for the current platform.

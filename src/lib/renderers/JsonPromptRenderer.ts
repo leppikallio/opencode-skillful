@@ -5,13 +5,17 @@
  * and prefer structured JSON data over XML for reliability and clarity.
  */
 
-import type { PromptRenderer } from '../../types';
+import type { PromptRenderer } from '../../types.ts';
 
 export const createJsonPromptRenderer = (): PromptRenderer => {
   const renderer: PromptRenderer = {
     format: 'json' as const,
     render(args) {
-      return JSON.stringify({ [args.type]: args.data }, null, 2);
+      if (args.type === 'SkillResource' || args.type === 'SkillSearchResults') {
+        return JSON.stringify({ [args.type]: args.data }, null, 2);
+      }
+
+      throw new Error('Unsupported render type');
     },
   };
 

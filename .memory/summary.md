@@ -2,7 +2,7 @@
 
 **Project**: opencode-skillful  
 **Repository**: https://github.com/zenobi-us/opencode-skillful  
-**Description**: OpenCode Skills Plugin - Implements Anthropic's Agent Skills Specification (v1.0)
+**Description**: OpenCode Skills Plugin - Native-first skill discovery and resource access companion for OpenCode
 
 ## Current Status
 
@@ -12,13 +12,13 @@
 
 ## Project Overview
 
-This is an OpenCode plugin that provides skill discovery and loading capabilities. It implements the Anthropic Agent Skills Specification, allowing users to discover SKILL.md files and load them into chat sessions.
+This is an OpenCode plugin that provides native-first skill discovery and resource access. OpenCode's built-in `skill` tool handles skill loading; this plugin adds `skill_find` for discovery and `skill_resource` for bundled resource reads.
 
 ### Key Features
 
 - Discovers SKILL.md files from multiple directories
 - Validates skills against Anthropic's spec (YAML frontmatter + Markdown)
-- Provides 3 main tools: `skill_use`, `skill_find`, `skill_resource`
+- Provides 2 plugin tools: `skill_find`, `skill_resource`
 - Supports multiple prompt formats (XML, JSON, Markdown)
 - Model-aware format selection
 

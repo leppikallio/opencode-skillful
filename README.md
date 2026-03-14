@@ -1,53 +1,55 @@
 # OpenCode Skills Plugin
 
-An interpretation of the [Anthropic Agent Skills Specification](https://github.com/anthropics/skills) for OpenCode, providing lazy-loaded skill discovery and injection.
+An interpretation of the [Anthropic Agent Skills Specification](https://github.com/anthropics/skills) for OpenCode, providing native-first skill discovery and resource access.
 
 Differentiators include:
 
-- Conversationally the agent uses `skill_find words, words words` to discover skills
-- The agent uses `skill_use "skill_name"` and,
-- The agent can use `skill_resource skill_relative/resource/path` to read reference material
+- Conversationally the agent uses `skill_find` to discover skills
+- Skills are loaded via OpenCode's native `skill` tool (this plugin does not load skills)
+- The agent can use `skill_resource` to read bundled reference material and scripts
 
 ## Table of Contents
 
 - [Quick Start](#quick-start) - Get started in 2 minutes
 - [Installation](#installation) - Set up the plugin
 - [Key Differences from Built-in OpenCode](#key-differences-from-built-in-opencode) - Why choose opencode-skillful
-- [Three Core Tools](#three-core-tools) - Overview of skill_find, skill_use, skill_resource
+- [Tools Overview](#tools-overview) - skill_find, skill_resource, and native skill
 - [Running Skill Scripts](#running-skill-scripts) - How agents execute skill scripts
 - [Usage Examples](#usage-examples) - Real-world scenarios
 - [Plugin Tools](#plugin-tools) - Detailed tool documentation
 - [Configuration](#configuration) - Advanced setup
 - [Architecture](#architecture) - How it works internally
+- [Migration](#migration) - Moving from legacy loader patterns
+- [Real-Host Smoke](#real-host-smoke) - Verify native-first behavior end-to-end
 - [Creating Skills](#creating-skills) - Build your own skills
 
 ## Quick Start
 
 Get up and running with three common tasks:
 
-### 1. Find Skills by Keyword
+### 1. Find Skills by Keyword (Plugin)
 
 ```
-skill_find "git commit"
+skill_find query="git commit"
 ```
 
 Searches for skills related to writing git commits. Returns matching skills sorted by relevance.
 
-### 2. Load a Skill into Your Chat
+### 2. Load a Skill (Native OpenCode)
 
 ```
-skill_use "experts_writing_git_commits"
+skill name="writing-git-commits"
 ```
 
-Loads the skill into your chat context. The AI agent can now reference it when giving advice.
+Loads the skill into your chat context using OpenCode's built-in loader.
 
-### 3. Read a Skill's Reference Document
+### 3. Read a Skill Resource (Plugin)
 
 ```
-skill_resource skill_name="experts_writing_git_commits" relative_path="references/guide.md"
+skill_resource skill_name="writing-git-commits" relative_path="references/guide.md"
 ```
 
-Access specific documentation or templates from a skill without loading the entire skill.
+Access specific documentation, templates, or scripts from a skill without loading the entire skill.
 
 **Next steps:** See [Usage Examples](#usage-examples) for real-world scenarios, or jump to [Plugin Tools](#plugin-tools) for detailed documentation.
 
@@ -61,23 +63,58 @@ Create or edit your OpenCode configuration file (typically `~/.config/opencode/c
 }
 ```
 
+## Real-Host Smoke
+
+Use the opt-in smoke script to verify the final native-first behavior against a real local OpenCode host:
+
+```bash
+bun scripts/smoke/native-skill-parity.ts
+```
+
+Prerequisites:
+
+- `~/Projects/opencode` exists, or set `OPENCODE_HOST_PATH` to another OpenCode checkout
+- The target host is runnable either from its local `node_modules` or from an installed `opencode` CLI on `PATH`
+- This plugin worktree is available locally so the smoke can reference `src/index.ts`
+
+Optional environment variables:
+
+- `OPENCODE_HOST_PATH` - override the default host path (`~/Projects/opencode`)
+- `OPENCODE_SMOKE_MODEL` - pin a specific model for the smoke run
+
+Optional flag:
+
+- `--keep-temp` - preserve the temporary smoke project for inspection
+
+Expected pass/fail signals:
+
+- Pass: the command exits successfully and prints exactly `OK`
+- Fail: the command exits non-zero and prints an `[ERROR]` line explaining the failed assertion or host/runtime problem
+
+What the smoke validates:
+
+- tool order is exactly `skill_find`, then native `skill`, then `skill_resource`
+- tool inputs match the expected smoke-skill name and resource path
+- `skill_use` never appears
+- the final assistant line is `OK` (some runtimes may add a prefix/header)
+
 ## Key Differences from Built-in OpenCode
 
 This plugin takes a different approach than OpenCode's built-in skills implementation:
 
-| Aspect                   | Built-in OpenCode                               | opencode-skillful                             |
-| ------------------------ | ----------------------------------------------- | --------------------------------------------- |
-| **Skill Loading**        | All skills pre-loaded into context by default   | Skills loaded on-demand only                  |
-| **Memory Overhead**      | All skills consume tokens in every conversation | Only loaded skills consume tokens             |
-| **Format Configuration** | Fixed format (usually markdown)                 | Per-model configuration (JSON, XML, Markdown) |
-| **Skill Discovery**      | Limited, built-in set                           | Extensible, custom skills in any directory    |
-| **Resource Access**      | Direct filesystem (less secure)                 | Pre-indexed resources (security-first)        |
+| Aspect                   | Built-in OpenCode                         | opencode-skillful                                              |
+| ------------------------ | ----------------------------------------- | -------------------------------------------------------------- |
+| **Skill Loading**        | Native `skill` loader                     | Reuses native `skill` (plugin does not add a second loader)    |
+| **Skill Discovery**      | Whatever the runtime already exposes      | Adds search over custom skill directories via `skill_find`     |
+| **Resource Access**      | No plugin-specific indexed resource layer | Adds pre-indexed resource reads via `skill_resource`           |
+| **Format Configuration** | Default runtime presentation              | Per-model XML/JSON/Markdown rendering for plugin tool outputs  |
+| **Migration Posture**    | No plugin migration needed                | Documents the native-first transition away from legacy loading |
 
-### On-Demand Skill Injection
+### Native-First Loading
 
-Unlike built-in skills that load automatically, opencode-skillful uses **lazy loading**:
+Unlike older skill plugins that implemented a separate loader, opencode-skillful stays native-first:
 
-- Skills are discovered at initialization but not injected until you explicitly request them
+- Skills are loaded via OpenCode's native `skill` tool
 - Only the skills you use consume tokens in your conversation
 - Reduces context bloat and improves efficiency with large skill libraries
 - Perfect for workflows with 50+ skills where you might use 2-3 per conversation
@@ -98,18 +135,18 @@ Different LLM providers prefer different formats. Configure which format each mo
 }
 ```
 
-This allows you to optimize skill injection for each model without creating duplicate skill documentation.
+This allows you to optimize tool output formatting for each model without creating duplicate skill documentation.
 
 ## Running Skill Scripts
 
-Skills can include executable scripts in their `scripts/` directory. When a skill is loaded with `skill_use`, the agent receives the full inventory of available scripts and can be instructed to run them.
+Skills can include executable scripts in their `scripts/` directory. This plugin does not execute scripts; it only lets the agent read script contents and metadata with `skill_resource`. If you want a script to run, you (or the agent) still run it via the appropriate native tool, typically `bash` against a known path or a temporary file created from the script contents.
 
 **How it works:**
 
 1. Skills reference scripts in their SKILL.md like: `./scripts/setup.sh`
-2. When you load a skill with `skill_use`, the agent sees all available scripts in the resource inventory
-3. You instruct the agent: "Run the setup script from this skill"
-4. The agent determines the script path and executes it
+2. You load the skill via native `skill` so the agent sees the instructions
+3. The agent reads the script via `skill_resource`
+4. The agent decides how to execute it safely, typically by using a known path or writing the contents to a temporary file and invoking `bash`
 
 **Example:**
 
@@ -119,30 +156,34 @@ You ask: "Can you run the changelog generator from the build-utils skill?"
 
 The agent:
 
-- Loads the skill with `skill_use`
-- Sees the script in the resource inventory
-- Determines the path: `scripts/generate-changelog.sh`
-- Runs the script with appropriate context
+- Loads the skill with native `skill`
+- Reads the script via `skill_resource`
+- Executes it with the appropriate native tool once the path or contents are available
 
 **Why this approach?**
 
 Rather than a dedicated script execution tool, agents have full visibility into all skill resources and can intelligently decide when and how to run them based on your instructions and the task context. Scripts are referenced naturally in skill documentation (e.g., "Run `./scripts/setup.sh` to initialize") and agents can work out the paths and execution from context.
 
-## Three Core Tools
+## Tools Overview
 
-The plugin provides three simple but powerful tools:
+The system is split between two plugin tools and one native OpenCode tool:
 
 | Tool               | Purpose                         | When to Use                                        |
 | ------------------ | ------------------------------- | -------------------------------------------------- |
 | **skill_find**     | Discover skills by keyword      | You want to search for relevant skills             |
-| **skill_use**      | Load skills into chat           | You want the AI to reference a skill               |
 | **skill_resource** | Read specific files from skills | You need a template, guide, or script from a skill |
+
+Native OpenCode tool (not provided by this plugin):
+
+| Tool      | Purpose              | When to Use                              |
+| --------- | -------------------- | ---------------------------------------- |
+| **skill** | Load a skill by name | You want the AI to use a skill's content |
 
 See [Plugin Tools](#plugin-tools) for complete documentation.
 
 ## Usage Examples
 
-These real-world scenarios show how to use the three tools together:
+These real-world scenarios show how to use the plugin tools with the native loader:
 
 ### Scenario 1: Writing Better Git Commits
 
@@ -153,13 +194,13 @@ These real-world scenarios show how to use the three tools together:
 1. Search for relevant skills:
 
    ```
-   skill_find "git commit"
+   skill_find query="git commit"
    ```
 
-2. Load the skill into your chat:
+2. Load the skill (native OpenCode):
 
    ```
-   skill_use "experts_writing_git_commits"
+    skill name="writing-git-commits"
    ```
 
 3. Ask the AI: "Help me write a commit message for refactoring the auth module"
@@ -175,7 +216,7 @@ The AI now has the skill's guidance and can apply best practices to your request
 1. Find skills in a category:
 
    ```
-   skill_find "testing"
+   skill_find query="testing"
    ```
 
 2. Once you've identified a skill, read its resources:
@@ -194,18 +235,18 @@ This is useful when you just need a template or specific document, not full AI g
 1. List all skills:
 
    ```
-   skill_find "*"
+   skill_find query="*"
    ```
 
 2. Filter by category:
 
    ```
-   skill_find "experts"
+   skill_find query="experts"
    ```
 
 3. Search with exclusions:
    ```
-   skill_find "testing -performance"
+   skill_find query="testing -performance"
    ```
 
 This searches for testing-related skills but excludes performance testing.
@@ -221,16 +262,16 @@ This searches for testing-related skills but excludes performance testing.
 ## Features
 
 - Discover SKILL.md files from multiple locations
-- Lazy loading - skills only inject when explicitly requested
+- Native-first loading: skills are loaded via OpenCode `skill`
 - Path prefix matching for organized skill browsing
 - Natural query syntax with negation and quoted phrases
 - Skill ranking by relevance (name matches weighted higher)
-- Silent message insertion (noReply pattern)
+- Safe resource access without introducing a second skill loader
 - **Pluggable prompt rendering** with model-aware format selection (XML, JSON, Markdown)
 
 ## Prompt Renderer Configuration
 
-The plugin supports **multiple formats for prompt injection**, allowing you to optimize results for different LLM models and use cases.
+The plugin supports **multiple formats for tool output rendering**, allowing you to optimize results for different LLM models and use cases.
 
 > See the [Configuration](#configuration) section for complete configuration details, including bunfig setup and global/project-level overrides.
 
@@ -264,7 +305,7 @@ Set your preferences in `.opencode-skillful.json`:
 1. Every tool execution checks the current active LLM model
 2. If `modelRenderers[modelID]` is configured, that format is used
 3. Otherwise, the global `promptRenderer` default is used
-4. Results are rendered in the selected format and injected into the prompt
+4. Results are rendered in the selected format and returned to the chat
 
 ### Format Output Examples
 
@@ -348,28 +389,27 @@ skill_find query="testing -performance"
 
 ### Loading Skills
 
-Skills must be loaded by their fully-qualified identifier (generated from the directory path).
+Skills are loaded by their canonical **skill name**.
 
-The skill identifier is created by converting the directory path to a slug: directory separators and hyphens become underscores.
+This plugin surfaces the canonical skill name from `SKILL.md` frontmatter (`name:`). If `name:` is missing, it falls back to the skill directory name (the folder containing `SKILL.md`).
 
 ```
 skills/
+  writing-git-commits/         # name: writing-git-commits
   experts/
     ai/
-      agentic-engineer/        # Identifier: experts_ai_agentic_engineer
-  superpowers/
-    writing/
-      code-review/             # Identifier: superpowers_writing_code_review
+      agentic-engineer/        # name: experts-ai-agentic-engineer (example)
 ```
 
-When loading skills, use the full identifier:
+When loading skills, use the canonical name with native `skill`:
 
 ```
-# Load a skill by its identifier
-skill_use "experts_ai_agentic_engineer"
+# Load a skill by its canonical name
+skill name="writing-git-commits"
 
-# Load multiple skills
-skill_use "experts_ai_agentic_engineer", "superpowers_writing_code_review"
+# Load multiple skills (repeat native loader)
+skill name="writing-git-commits"
+skill name="experts-ai-agentic-engineer"
 ```
 
 ### Reading Skill Resources
@@ -386,20 +426,40 @@ skill_resource skill_name="brand-guidelines" relative_path="assets/logo-usage.ht
 
 ```
 
-Normally you won't need to use `skill_resource` directly, since the llm will do it for you.
-
-When skill_use is called, it will be wrapped with instructions to the llm on
-how to load references, assets, and scripts from the skill.
+Normally you won't need to use `skill_resource` directly, since the LLM will do it for you.
 
 But when writing your skills, there's nothing stopping you from using `skill_resource` to be explicit.
 
 (Just be aware that exotic file types might need special tooling to handle them properly.)
 
+## Migration
+
+Older versions of this plugin documented a plugin-managed skill loading step. In the native-first design, skill loading is handled by OpenCode's built-in `skill` tool, and this plugin focuses on discovery (`skill_find`) and safe resource reads (`skill_resource`).
+
+Common replacements:
+
+```text
+# Old: plugin-managed loading step
+[plugin loader for <skill-name>]
+
+# New: native OpenCode loader
+skill name="<skill-name>"
+```
+
+```text
+# Old: plugin-managed loading step for multiple skills
+[plugin loader for <skill-a>, <skill-b>]
+
+# New: repeat native loader
+skill name="<skill-a>"
+skill name="<skill-b>"
+```
+
 ## Plugin Tools
 
-The plugin provides three core tools implemented in `src/tools/`:
+The plugin provides two tools (defined in `src/index.ts`):
 
-### `skill_find` (SkillFinder.ts)
+### `skill_find`
 
 Search for skills using natural query syntax with intelligent ranking by relevance.
 
@@ -414,73 +474,47 @@ Search for skills using natural query syntax with intelligent ranking by relevan
 
 **Returns:**
 
-- List of matching skills with:
-  - `skill_name`: Skill identifier (e.g., `experts_writing_git_commits`)
-  - `skill_shortname`: Directory name of the skill (e.g., `writing-git-commits`)
-  - `description`: Human-readable description
+- `skills`: matching skills, each with:
+  - `name`: canonical skill name (the value you pass to native `skill`)
+  - `description`: human-readable description
+- `summary`: search metadata
 - If config.debug is enabled:
-  - Debug information: discovered count, parsed results, rejections, duplicates, errors
+  - `debug`: registry summary (discovered/parsed/rejected/errors)
 
 **Example Response:**
 
 ```xml
-<SkillSearchResults query="git commit">
-  <Skills>
-    <Skill skill_name="experts_writing_git_commits" skill_shortname="writing-git-commits">
-      Guidelines for writing effective git commit messages
-    </Skill>
-  </Skills>
-  <Summary>
-    <Total>42</Total>
-    <Matches>1</Matches>
-    <Feedback>Found 1 skill matching your query</Feedback>
-  </Summary>
+<SkillSearchResults>
+  <query>git commit</query>
+  <skills>
+    <name>writing-git-commits</name>
+    <description>Guidelines for writing effective git commit messages</description>
+  </skills>
+  <summary>
+    <total>42</total>
+    <matches>1</matches>
+    <feedback>Searching for: &quot;**git commit**&quot; | Found 1 match</feedback>
+    <usage_hint>Load with: skill name=&quot;writing-git-commits&quot;</usage_hint>
+  </summary>
 </SkillSearchResults>
 ```
 
-Then load it with:
+Then load it via native OpenCode:
 
 ```
-skill_use "experts_writing_git_commits"
+skill name="writing-git-commits"
 ```
 
-### `skill_use` (SkillUser.ts)
+### `skill_resource`
 
-Load one or more skills into the chat context with full resource metadata.
-
-**Parameters:**
-
-- `skill_names`: Array of skill identifiers to load (e.g., `experts_ai_agentic_engineer`)
-
-**Features:**
-
-- Injects skill metadata and content including:
-  - Skill name and description
-  - Resource inventory:
-    - `references`: Documentation and reference files
-    - `assets`: Binary files, templates, images
-    - `scripts`: Executable scripts with paths and MIME types
-  - Full skill content formatted as Markdown for easy reading
-  - Base directory context for relative path resolution
-
-**Behavior:** Silently injects skills as user messages (persists in conversation history)
-
-**Example Response:**
-
-```json
-{ "loaded": ["experts/writing-git-commits"], "notFound": [] }
-```
-
-### `skill_resource` (SkillResourceReader.ts)
-
-Read a specific resource file from a skill's directory and inject silently into the chat.
+Read a specific resource file from a skill's directory and return it in the configured format.
 
 **When to Use:**
 
 - Load specific reference documents or templates from a skill
 - Access supporting files without loading the entire skill
 - Retrieve examples, guides, configuration templates, or scripts
-- Most commonly used after loading a skill with `skill_use` to access its resources
+- Often used after loading a skill via native `skill` (so the LLM sees the skill instructions)
 
 **Parameters:**
 
@@ -492,7 +526,7 @@ Read a specific resource file from a skill's directory and inject silently into 
 Can read any of the three resource types:
 
 - `references/` - Documentation, guides, and reference materials
-- `assets/` - Templates, images, binary files, and configuration files
+- `assets/` - Templates and configuration files (text; binary assets need special handling)
 - `scripts/` - Executable scripts (shell, Python, etc.) for viewing or analysis
 
 **Returns:**
@@ -502,9 +536,9 @@ Can read any of the three resource types:
 
 **Behavior:**
 
-- Silently injects resource content without triggering AI response (noReply pattern)
 - Resolves relative paths within skill directory (e.g., `references/guide.md`, `assets/template.html`, `scripts/setup.sh`)
-- Supports any text or binary file type
+- Returns a rendered payload (XML/JSON/Markdown) directly to the chat
+- Reads files as UTF-8 text (`Bun.file(...).text()`); binary assets are not supported
 
 **Example Responses:**
 
@@ -554,16 +588,6 @@ When a search query doesn't match any skills, the response includes feedback:
   </Summary>
 </SkillSearchResults>
 ```
-
-### skill_use Errors
-
-When loading skills, if a skill name is not found, it's returned in the `notFound` array:
-
-```json
-{ "loaded": ["writing-git-commits"], "notFound": ["nonexistent-skill"] }
-```
-
-The loaded skills are still injected into the conversation, allowing you to use available skills even if some are not found.
 
 ### skill_resource Errors
 
@@ -629,7 +653,7 @@ Create `.opencode-skillful.json` in your project root or global config directory
   - Use project-local `.opencode/skills/` for project-specific skills
   - Platform-aware paths: automatically resolves to XDG, macOS, or Windows standard locations
 
-- **promptRenderer** (string, default: `'xml'`): Default format for prompt injection
+- **promptRenderer** (string, default: `'xml'`): Default format for plugin tool output rendering
   - Options: `'xml'` | `'json'` | `'md'`
   - XML (default): Claude-optimized, human-readable structured format
   - JSON: GPT-optimized, strict JSON formatting for strong parsing models
@@ -643,7 +667,7 @@ Create `.opencode-skillful.json` in your project root or global config directory
 
 ### How Renderer Selection Works
 
-When any tool executes (`skill_find`, `skill_use`, `skill_resource`):
+When any plugin tool executes (`skill_find`, `skill_resource`):
 
 1. The plugin queries the OpenCode session to determine the active LLM model
 2. Builds a list of model candidates to check, from most to least specific:
@@ -653,7 +677,7 @@ When any tool executes (`skill_find`, `skill_use`, `skill_resource`):
    - First match wins (most specific takes precedence)
    - If found, uses that format
 4. If no match in `modelRenderers`, falls back to `promptRenderer` default
-5. Renders the results in the selected format and injects into the prompt
+5. Renders the results in the selected format and returns it to the chat
 
 **Example**: If your config has `"claude-3-5-sonnet": "xml"` and the active model is `"anthropic-claude-3-5-sonnet"`, the plugin will:
 
@@ -716,18 +740,16 @@ The plugin uses a **layered, modular architecture** with clear separation of con
 - **Async Coordination**: ReadyStateMachine ensures tools don't execute before registry initialization completes
 - **Security-First Resource Access**: All resources are pre-indexed at parse time; no path traversal possible
 - **Factory Pattern**: Centralized API creation for easy testing and configuration management
-- **Lazy Loading**: Skills only injected when explicitly requested, minimal memory overhead
+- **Native-First Loading**: OpenCode owns skill loading; this plugin stays layered on top
 
 ### System Layers
 
 ```
 ┌──────────────────────────────────────────────────────┐
 │ Plugin Entry Point (index.ts)                        │
-│ - Defines 3 core tools: skill_find, skill_use,      │
-│   skill_resource                                     │
-│ - NOT including skill_exec (removed)                │
+│ - Defines 2 plugin tools: skill_find, skill_resource │
 │ - Initializes API factory and config                │
-│ - Manages message injection (XML serialization)      │
+│ - Adds short native guidance to system prompt        │
 └──────────────────────────────────────────────────────┘
                           ↓
 ┌──────────────────────────────────────────────────────┐
@@ -751,7 +773,6 @@ The plugin uses a **layered, modular architecture** with clear separation of con
 │ - ReadyStateMachine: async initialization sequencing │
 │ - SkillFs: abstract filesystem operations            │
 │ - Identifiers: path ↔ tool name conversions          │
-│ - OpenCodeChat: message injection abstraction        │
 │ - xml.ts: JSON → XML serialization                   │
 └──────────────────────────────────────────────────────┘
 ```
@@ -802,7 +823,7 @@ PHASE 3: TOOL EXECUTION (User Requested)
 └────────────┬────────────────────────────┘
              ↓
 ┌─────────────────────────────────────────┐
-│ SkillFinder Tool (tools/SkillFinder.ts) │
+│ skill_find Tool (index.ts)              │
 │ - Validates query string                │
 │ - Awaits: controller.ready.whenReady()  │
 └────────────┬────────────────────────────┘
@@ -832,49 +853,9 @@ PHASE 3: TOOL EXECUTION (User Requested)
              ↓
 ┌─────────────────────────────────────────┐
 │ Format & Return (index.ts)              │
-│ - Convert to XML via jsonToXml()        │
-│ - Inject into message context           │
-│ - Return to user                        │
+│ - Render as XML/JSON/Markdown           │
+│ - Return to chat                        │
 └─────────────────────────────────────────┘
-```
-
-### Data Flow Diagram: skill_use Loading
-
-```
-┌──────────────────────────────────┐
-│ User: skill_use("git-commits")   │
-└────────────┬─────────────────────┘
-             ↓
-┌──────────────────────────────────┐
-│ SkillUser Tool (tools/SkillUser) │
-│ - Await ready state              │
-│ - Validate skill names           │
-└────────────┬─────────────────────┘
-             ↓
-┌──────────────────────────────────┐
-│ Registry.controller.get(key)     │
-│ - Look up skill in Map           │
-│ - Return Skill object with:      │
-│   * Name, description            │
-│   * Content (markdown)           │
-│   * Resource maps (indexed)      │
-└────────────┬─────────────────────┘
-             ↓
-┌──────────────────────────────────┐
-│ Format Skill for Injection       │
-│ - Skill metadata                 │
-│ - Resource inventory (with MIME) │
-│ - Full content as markdown       │
-│ - Base directory context         │
-└────────────┬─────────────────────┘
-             ↓
-┌──────────────────────────────────┐
-│ Silent Injection Pattern         │
-│ - Inject as user message         │
-│ - Persists in conversation       │
-│ - Returns success summary        │
-│   { loaded: [...], notFound: []}│
-└──────────────────────────────────┘
 ```
 
 ### Data Flow Diagram: skill_resource Access
@@ -886,8 +867,7 @@ PHASE 3: TOOL EXECUTION (User Requested)
 └──────────────┬───────────────────────────────┘
                ↓
 ┌──────────────────────────────────────────────┐
-│ SkillResourceReader Tool                     │
-│ (tools/SkillResourceReader.ts)               │
+│ skill_resource Tool (index.ts)               │
 │ - Validate skill_name                       │
 │ - Parse path: "scripts/commit.sh"            │
 │   ├─ type = "scripts"                        │
@@ -923,9 +903,9 @@ PHASE 3: TOOL EXECUTION (User Requested)
 └──────────────┬───────────────────────────────┘
                ↓
 ┌──────────────────────────────────────────────┐
-│ Silent Injection                             │
-│ - Inject content into message                │
-│ - User sees resource inline                  │
+│ Render & Return                              │
+│ - Render as XML/JSON/Markdown                │
+│ - Return to chat                             │
 └──────────────────────────────────────────────┘
 ```
 
@@ -937,7 +917,7 @@ PHASE 3: TOOL EXECUTION (User Requested)
 | **Pre-indexed Resources**    | Prevents path traversal attacks                    | Security: only pre-registered paths retrievable              |
 | **Factory Pattern (api.ts)** | Centralizes initialization                         | Easy to test, swap implementations, mock components          |
 | **Removed SkillProvider**    | Eliminated unnecessary abstraction                 | Simpler code, direct registry access, easier debugging       |
-| **XML Serialization**        | Human-readable message injection                   | Results display nicely formatted in chat context             |
+| **Prompt Rendering**         | Model-aware structured output                      | XML/JSON/Markdown tool results per model configuration       |
 | **Two-phase Init**           | Async discovery doesn't block tool registration    | Tools available immediately, discovery happens in background |
 
 ### Services Layer Breakdown
@@ -971,23 +951,7 @@ PHASE 3: TOOL EXECUTION (User Requested)
 
 ### Tools Layer Overview
 
-#### SkillFinder (`src/tools/SkillFinder.ts`)
-
-- Wraps SkillSearcher with ready-state synchronization
-- Transforms results to SkillFinder schema
-- Returns matched skills + summary metadata
-
-#### SkillUser (`src/tools/SkillUser.ts`)
-
-- Loads skills into chat context
-- Injects as user message (persists in conversation)
-- Returns { loaded: [...], notFound: [...] }
-
-#### SkillResourceReader (`src/tools/SkillResourceReader.ts`)
-
-- Safe resource path parsing and validation
-- Pre-indexed path lookup (prevents traversal)
-- Returns injection object with MIME type and content
+The plugin tools are defined in `src/index.ts` and call into the API/services layer.
 
 ### Configuration and Path Resolution
 
@@ -1057,7 +1021,7 @@ Instructions for the AI agent when this skill is loaded...
 - `description` must be at least 20 characters and should be concise (under 500 characters recommended)
   - Focus on when to use the skill, not what it does
   - Include specific triggering conditions and symptoms
-  - Use third person for system prompt injection
+  - Use third person for skill guidance text that the model will read
   - Example: "Use when designing REST APIs to establish consistent patterns and improve developer experience"
 - Directory name and frontmatter `name` must match exactly
 
@@ -1068,8 +1032,8 @@ Skill resources are automatically discovered and categorized:
 - **References** (`references/` directory): Documentation, guides, and reference materials
   - Typically Markdown, plaintext, or HTML files
   - Accessed via `skill_resource` for reading documentation
-- **Assets** (`assets/` directory): Templates, images, and binary files
-  - Can include HTML templates, images, configuration files
+- **Assets** (`assets/` directory): Templates and configuration files (prefer text; binary needs special handling)
+  - Can include HTML templates and configuration files
   - Useful for providing templates and examples to the AI
 - **Scripts** (`scripts/` directory): Executable scripts that perform actions
   - Shell scripts (.sh), Python scripts (.py), or other executables
@@ -1081,8 +1045,7 @@ Skill resources are automatically discovered and categorized:
 - Skills are discovered at plugin initialization (requires restart to reload)
 - Duplicate skill names are logged and skipped (last path wins)
 - Tool restrictions in `allowed-tools` are informational (enforced at agent level)
-- Skill content is injected as user messages (persists in conversation)
-- Base directory context is provided for relative path resolution in skills
+- Skill loading is handled by native OpenCode `skill`
 
 ## Contributing
 

@@ -1,12 +1,15 @@
 {
   "name": "@zenobius/opencode-skillful",
-  "version": "1.2.4",
-  "description": "OpenCode Skills Plugin - Anthropic Agent Skills Specification implementation",
+  "version": "2.0.0",
+  "description": "Native-first skill discovery and resource reads for OpenCode",
   "type": "module",
+  "scripts": {
+    "check:plugin-hook-compatibility": "tsc --noEmit --moduleResolution bundler --module ESNext --target ES2022 --skipLibCheck --types bun,node src/pluginHooksCompatibility.ts"
+  },
   "module": "src/index.ts",
   "repository": {
     "type": "git",
-    "url": "https://github.com/zenobi-us/opencode-skillful"
+    "url": "git+https://github.com/leppikallio/opencode-skillful.git"
   },
   "publishConfig": {
     "access": "public",
@@ -19,7 +22,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "dependencies": {
-    "@opencode-ai/plugin": "1.0.85",
+    "@opencode-ai/plugin": "1.2.0",
     "bunfig": "^0.15.6",
     "dedent": "^1.7.1",
     "gray-matter": "^4.0.3",

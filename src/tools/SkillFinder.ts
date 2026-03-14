@@ -11,8 +11,8 @@
  *
  * RETURN VALUE: Object with:
  * - query: original query for user reference
- * - skills: matched skills with toolName and description
- * - summary: metadata (total skills, matches found, feedback message)
+ * - skills: matched skills with canonical name and description
+ * - summary: metadata (total skills, matches found, feedback message, usage hint)
  * - debug: registry debug info (only if enabled in config)
  *
  * TOOL REGISTRATION: This factory is called in api.ts like:
@@ -26,7 +26,11 @@
  * @returns Async function callable by OpenCode as skill_find tool
  */
 
-import type { SkillRegistry } from '../types';
+import type { SkillRegistry } from '../types.ts';
+
+const escapeForDoubleQuotedHint = (value: string): string => {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+};
 
 /**
  * Creates a tool function that searches for skills
@@ -38,19 +42,34 @@ export function createSkillFinder(provider: SkillRegistry) {
     const result = provider.search(args.query);
 
     const skills = result.matches.map((skill) => ({
-      name: skill.toolName,
+      name: skill.name,
       description: skill.description,
     }));
 
-    return {
+    const usageHint =
+      skills.length > 0
+        ? `Load with: skill name="${escapeForDoubleQuotedHint(skills[0].name)}"`
+        : 'Load with: skill name="<skill-name>"';
+
+    const response = {
       query: args.query,
       skills,
       summary: {
         total: provider.controller.skills.length,
         matches: result.totalMatches,
         feedback: result.feedback,
+        usage_hint: usageHint,
       },
-      debug: provider.debug,
     };
+
+    // Debug payload is opt-in (config.debug) to keep the outward contract lean.
+    if (provider.config.debug) {
+      return {
+        ...response,
+        debug: provider.debug,
+      };
+    }
+
+    return response;
   };
 }

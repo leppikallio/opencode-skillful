@@ -10,7 +10,7 @@
  * - Primitives: converted to <key>value</key>
  * - Objects: recursively converted with key as element name
  * - Arrays: each item converted with parent key as element name
- * - null/undefined: converted to <key/>
+ * - null/undefined: skipped
  *
  * EXAMPLE:
  * Input:  { skill: { name: 'git-commit', description: 'Write commits' } }
@@ -61,6 +61,11 @@ export function jsonToXml(json: object, rootElement: string = 'root'): string {
 
     const value = Object.getOwnPropertyDescriptor(json, key)?.value;
 
+    // Keep tool output lean: omit unset optional fields.
+    if (value === undefined || value === null) {
+      continue;
+    }
+
     if (Array.isArray(value)) {
       for (const item of value) {
         xml += jsonToXml(item, key);
@@ -69,10 +74,8 @@ export function jsonToXml(json: object, rootElement: string = 'root'): string {
       xml += jsonToXml(mapToObject(value), key);
     } else if (typeof value === 'object' && value !== null) {
       xml += jsonToXml(value, key);
-    } else if (value !== undefined && value !== null) {
-      xml += `<${key}>${escapeXml(String(value))}</${key}>`;
     } else {
-      xml += `<${key}/>`;
+      xml += `<${key}>${escapeXml(String(value))}</${key}>`;
     }
   }
 

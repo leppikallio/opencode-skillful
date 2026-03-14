@@ -8,12 +8,16 @@ import { createLogger } from './services/logger';
  * @returns A complete Skill object
  */
 export function createMockSkill(overrides: Partial<Skill> = {}): Skill {
+  const toolName: string = overrides.toolName ?? 'test_skill';
+  const fullPath: string = overrides.fullPath ?? `/mock/skills/${toolName}`;
+  const path: string = overrides.path ?? `${fullPath}/SKILL.md`;
+
   return {
     name: 'test-skill',
     description: 'A test skill',
-    fullPath: '/path/to/skill',
-    toolName: 'test_skill',
-    path: '/path/to/skill/SKILL.md',
+    fullPath,
+    toolName,
+    path,
     content: 'Test content',
     scripts: new Map(),
     references: new Map(),

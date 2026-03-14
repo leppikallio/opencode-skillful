@@ -2,13 +2,14 @@
 id: dataflow1
 title: Data Flow Diagram
 created_at: 2026-02-05
-updated_at: 2026-02-05
+updated_at: 2026-03-14
 area: data-flow
 tags:
   - architecture
   - data-flow
 learned_from:
   - initial analysis
+  - native-first refactor
 ---
 
 # Data Flow
@@ -17,7 +18,7 @@ learned_from:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                           INITIALIZATION                                  │
+│                           INITIALIZATION                                │
 └──────────────────────────────────────────────────────────────────────────┘
 
      ┌─────────┐
@@ -53,11 +54,8 @@ learned_from:
      │  └─────────────┘  │  (not init yet) │    │
      │                   └─────────────────┘    │
      │  ┌─────────────┐  ┌─────────────────┐    │
-     │  │findSkills() │  │loadSkill()      │    │
+     │  │findSkills() │  │readResource()   │    │
      │  └─────────────┘  └─────────────────┘    │
-     │  ┌─────────────────────────────────┐     │
-     │  │readResource()                   │     │
-     │  └─────────────────────────────────┘     │
      └──────────────────────────────────────────┘
           │
           │ registry.initialise()
@@ -77,18 +75,18 @@ learned_from:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                        SKILL_USE TOOL FLOW                                │
+│                    PLUGIN TOOL EXECUTION FLOW                            │
 └──────────────────────────────────────────────────────────────────────────┘
 
   User Request                    Tool Context
        │                              │
        ▼                              ▼
-  ┌─────────┐                   ┌───────────┐
-  │skill_use│                   │ messageID │
-  │  args   │                   │ sessionID │
-  └────┬────┘                   └─────┬─────┘
-       │                              │
-       ▼                              ▼
+  ┌───────────────┐              ┌───────────┐
+  │ skill_find /  │              │ messageID │
+  │ skill_resource│              │ sessionID │
+  └──────┬────────┘              └─────┬─────┘
+         │                              │
+         ▼                              ▼
   ┌──────────────────────────────────────────┐
   │        MessageModelIdAccountant           │
   │  getModelInfo({messageID, sessionID})    │
@@ -104,9 +102,9 @@ learned_from:
                         │
                         ▼
   ┌──────────────────────────────────────────┐
-  │         api.loadSkill(names)             │
-  │  • For each skill name:                  │
-  │    └─▶ registry.get(name)               │
+  │          api.findSkills / readResource   │
+  │  • Search skills or resolve resource     │
+  │  • Registry-backed alias resolution      │
   └─────────────────────┬────────────────────┘
                         │
                         ▼
@@ -121,15 +119,8 @@ learned_from:
                         ▼
   ┌──────────────────────────────────────────┐
   │           renderer({data, type})         │
-  │  • Format skill content                  │
-  │  • Add metadata                          │
-  └─────────────────────┬────────────────────┘
-                        │
-                        ▼
-  ┌──────────────────────────────────────────┐
-  │         sendPrompt(content, {sessionId}) │
-  │  • Inject as user message                │
-  │  • Persists in chat                      │
+  │  • Format tool output                    │
+  │  • Return to chat / tool result          │
   └──────────────────────────────────────────┘
 ```
 
@@ -137,7 +128,7 @@ learned_from:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                      SKILL_FIND SEARCH FLOW                               │
+│                      SKILL_FIND SEARCH FLOW                             │
 └──────────────────────────────────────────────────────────────────────────┘
 
   Query String
@@ -145,32 +136,18 @@ learned_from:
        ▼
   ┌─────────────────────┐
   │   parseQuery()      │
-  │                     │
-  │ "react -test"       │
-  │         │           │
-  │         ▼           │
-  │ ┌─────────────────┐ │
-  │ │ include: [react]│ │
-  │ │ exclude: [test] │ │
-  │ └─────────────────┘ │
   └──────────┬──────────┘
              │
              ▼
   ┌─────────────────────┐
   │ For each skill:     │
-  │                     │
-  │ shouldIncludeSkill()│◀─── exclude filter
-  │         │           │
-  │         ▼           │
-  │   rankSkill()       │◀─── scoring:
-  │   • name match: 3x  │     name > description
-  │   • desc match: 1x  │
-  │   • exact bonus     │
+  │ shouldIncludeSkill()│
+  │ rankSkill()         │
   └──────────┬──────────┘
              │
              ▼
   ┌─────────────────────┐
-  │  Sort by score      │
-  │  Return top matches │
+  │ Match summary +     │
+  │ canonical skill ids │
   └─────────────────────┘
 ```

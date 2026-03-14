@@ -116,7 +116,10 @@ export function createSkillResourceResolver(provider: SkillRegistry) {
     }
 
     if (loweredType === 'tool' || loweredType === 'tools') {
-      const candidates = [normalizedRelative, normalizedRelative ? `Tools/${normalizedRelative}` : 'Tools'];
+      const candidates = [
+        normalizedRelative,
+        normalizedRelative ? `Tools/${normalizedRelative}` : 'Tools',
+      ];
       return findInMap(skill.resources, candidates);
     }
 

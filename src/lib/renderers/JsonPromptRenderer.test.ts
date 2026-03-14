@@ -2,15 +2,13 @@
  * JsonPromptRenderer Tests
  *
  * Test coverage for real use cases:
- * - Rendering Skill objects for prompt injection
  * - Rendering SkillResource objects (file content)
  * - Rendering SkillSearchResults objects (search results)
  * - Proper JSON formatting with indentation
  */
 
-import { describe, it, expect } from 'vitest';
-import { createJsonPromptRenderer } from './JsonPromptRenderer';
-import type { Skill } from '../../types';
+import { describe, expect, it } from 'vitest';
+import { createJsonPromptRenderer } from './JsonPromptRenderer.ts';
 
 describe('JsonPromptRenderer', () => {
   const renderer = createJsonPromptRenderer();
@@ -19,8 +17,8 @@ describe('JsonPromptRenderer', () => {
     expect(renderer.format).toBe('json');
   });
 
-  it('should render Skill object for prompt injection', () => {
-    const skill: Skill = {
+  it('should reject Skill objects (full-skill rendering removed)', () => {
+    const skill = {
       name: 'auth-patterns',
       fullPath: '/home/user/.opencode/skills/auth-patterns',
       toolName: 'skill_auth_patterns',
@@ -32,14 +30,11 @@ describe('JsonPromptRenderer', () => {
       assets: new Map(),
     };
 
-    const result = renderer.render({ data: skill, type: 'Skill' });
-
-    expect(result).toContain('"Skill"');
-    expect(result).toContain('"name": "auth-patterns"');
-    expect(result).toContain('"toolName": "skill_auth_patterns"');
-    expect(result).toContain('"description"');
-    expect(result).toMatch(/\n/); // Has newlines for readability
-    expect(result).toMatch(/[ ]{2}/); // Has indentation
+    expect(() =>
+      renderer.render({ data: skill, type: 'Skill' } as unknown as Parameters<
+        typeof renderer.render
+      >[0])
+    ).toThrow(/Unsupported render type/);
   });
 
   it('should render SkillResource object (file content)', () => {
@@ -52,11 +47,10 @@ describe('JsonPromptRenderer', () => {
 
     const result = renderer.render({ data, type: 'SkillResource' });
 
-    expect(result).toContain('"SkillResource"');
-    expect(result).toContain('"skill_name": "api-design"');
-    expect(result).toContain('"resource_path": "references/rest-guidelines.md"');
-    expect(result).toContain('"resource_mimetype": "text/markdown"');
-    expect(result).toContain('"content"');
+    expect(result).toBe(JSON.stringify({ SkillResource: data }, null, 2));
+
+    const parsed = JSON.parse(result) as { SkillResource: typeof data };
+    expect(parsed).toEqual({ SkillResource: data });
   });
 
   it('should render SkillSearchResults object', () => {
@@ -70,61 +64,62 @@ describe('JsonPromptRenderer', () => {
         total: 25,
         matches: 2,
         feedback: 'Found 2 skills matching "authentication"',
+        usage_hint: 'Load with: skill name="auth-patterns"',
       },
     };
 
     const result = renderer.render({ data, type: 'SkillSearchResults' });
 
-    expect(result).toContain('"SkillSearchResults"');
-    expect(result).toContain('"query": "authentication"');
-    expect(result).toContain('"auth-patterns"');
-    expect(result).toContain('"oauth-setup"');
-    expect(result).toContain('"matches": 2');
-    expect(result).toContain('"total": 25');
+    expect(result).toBe(JSON.stringify({ SkillSearchResults: data }, null, 2));
+
+    const parsed = JSON.parse(result) as { SkillSearchResults: typeof data };
+    expect(parsed).toEqual({ SkillSearchResults: data });
   });
 
-  it('should properly format JSON with indentation', () => {
-    const skill: Skill = {
-      name: 'test-skill',
-      fullPath: '/path/to/skill',
-      toolName: 'test_skill',
-      description: 'Test skill',
-      content: 'Content',
-      path: '/path/to/skill/SKILL.md',
-      scripts: new Map(),
-      references: new Map(),
-      assets: new Map(),
+  it('should preserve usage_hint in SkillSearchResults payload', () => {
+    const data = {
+      query: 'authentication',
+      skills: [{ name: 'auth-patterns', description: 'Common auth patterns' }],
+      summary: {
+        total: 25,
+        matches: 1,
+        feedback: 'Found 1 skill matching "authentication"',
+        usage_hint: 'Load with: skill name="auth-patterns"',
+      },
     };
 
-    const result = renderer.render({ data: skill, type: 'Skill' });
+    const result = renderer.render({ data, type: 'SkillSearchResults' } as unknown as Parameters<
+      typeof renderer.render
+    >[0]);
+    const parsed = JSON.parse(result) as {
+      SkillSearchResults: { summary: { usage_hint: string } };
+    };
 
-    // Verify it's valid JSON
-    expect(() => JSON.parse(result)).not.toThrow();
-
-    // Verify it has proper formatting
-    expect(result).toMatch(/\n/); // Has newlines
-    expect(result).toMatch(/ {2}"/); // Has 2-space indentation
+    expect(result).toContain('"usage_hint"');
+    expect(parsed.SkillSearchResults.summary.usage_hint).toBe(
+      'Load with: skill name="auth-patterns"'
+    );
   });
 
-  it('should handle optional Skill properties', () => {
-    const skill: Skill = {
-      name: 'minimal-skill',
-      fullPath: '/path/to/skill',
-      toolName: 'minimal_skill',
-      description: 'Minimal skill',
-      content: 'Content',
-      path: '/path/to/skill/SKILL.md',
-      scripts: new Map(),
-      references: new Map(),
-      assets: new Map(),
-      metadata: { version: '1.0.0' },
-      license: 'MIT',
+  it('should omit undefined optional fields from SkillSearchResults payload', () => {
+    const data = {
+      query: 'authentication',
+      skills: [{ name: 'auth-patterns', description: 'Common auth patterns' }],
+      summary: {
+        total: 25,
+        matches: 1,
+        feedback: 'Found 1 skill matching "authentication"',
+        usage_hint: 'Load with: skill name="auth-patterns"',
+      },
+      debug: undefined,
     };
 
-    const result = renderer.render({ data: skill, type: 'Skill' });
+    const result = renderer.render({ data, type: 'SkillSearchResults' });
+    const parsed = JSON.parse(result) as {
+      SkillSearchResults: { debug?: unknown };
+    };
 
-    expect(() => JSON.parse(result)).not.toThrow();
-    expect(result).toContain('"metadata"');
-    expect(result).toContain('"license": "MIT"');
+    expect(parsed.SkillSearchResults.debug).toBeUndefined();
+    expect(result).not.toContain('"debug"');
   });
 });

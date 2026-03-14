@@ -88,7 +88,9 @@ export function stripLeadingHtmlCommentBlocks(content: string): string {
 
 // Validation Schema
 const SkillFrontmatterSchema = tool.schema.object({
-  name: tool.schema.string().optional(),
+  // Some YAML parsers accept non-string scalars (e.g. numbers) for `name`.
+  // We treat non-strings as missing and fall back to the directory basename.
+  name: tool.schema.unknown().optional(),
   description: tool.schema
     .string()
     .min(20, 'Description must be at least 20 characters for discoverability'),
@@ -231,10 +233,12 @@ export function createSkillRegistryController() {
   };
 
   const registerAliasesForKey = (key: string, skill: Skill) => {
+    const legacyBasename = basename(skill.fullPath);
     const nextAliases = new Set<string>([
       ...aliasCandidates(key),
       ...aliasCandidates(skill.name),
       ...aliasCandidates(skill.toolName),
+      ...aliasCandidates(legacyBasename),
     ]);
 
     for (const alias of nextAliases) {
@@ -343,6 +347,11 @@ export async function createSkillRegistry(
     rejected: 0,
     errors: [],
   };
+
+  // Canonical outward-facing names (frontmatter-derived) are NOT registry keys.
+  // Registry keys remain stable path-derived `toolName` values.
+  const canonicalLowerToToolName = new Map<string, string>();
+  const toolNameToCanonicalLower = new Map<string, string>();
 
   /**
    * Initialise - Async skill discovery and parsing pipeline
@@ -464,8 +473,36 @@ export async function createSkillRegistry(
           continue;
         }
 
+        // Reject explicit canonical-name collisions (case-insensitive) instead of
+        // silently shadowing one skill behind another.
+        const canonicalName = skill.name.trim();
+        const canonicalLower = canonicalName.toLowerCase();
+        const existingToolName = canonicalLowerToToolName.get(canonicalLower);
+
+        if (existingToolName && existingToolName !== skill.toolName) {
+          const existing = controller.get(existingToolName);
+          const existingCanonical = existing?.name ?? canonicalLower;
+
+          summary.rejected++;
+          summary.errors.push(
+            `[CanonicalNameCollision] Canonical skill name collision: "${existingCanonical}" vs "${canonicalName}" ("${existingToolName}" vs "${skill.toolName}")`
+          );
+          continue;
+        }
+
+        // If we overwrite by internal key (multi-base-path), keep canonical tracking consistent.
+        const priorCanonicalLower = toolNameToCanonicalLower.get(skill.toolName);
+        if (priorCanonicalLower && priorCanonicalLower !== canonicalLower) {
+          if (canonicalLowerToToolName.get(priorCanonicalLower) === skill.toolName) {
+            canonicalLowerToToolName.delete(priorCanonicalLower);
+          }
+        }
+
         // Register skill (or overwrite if same path)
         controller.set(skill.toolName, skill);
+
+        canonicalLowerToToolName.set(canonicalLower, skill.toolName);
+        toolNameToCanonicalLower.set(skill.toolName, canonicalLower);
         summary.parsed++;
       } catch (error) {
         summary.rejected++;
@@ -565,6 +602,12 @@ async function parseSkill(args: {
   // Use directory name as skill name (shortName)
   const shortName = basename(dirname(args.skillPath));
 
+  // Outward-facing canonical name comes from frontmatter when present.
+  // Internal registry keys remain path-derived (toolName) for stability.
+  const rawName: unknown = frontmatter.data.name;
+  const frontmatterName = typeof rawName === 'string' ? rawName.trim() : '';
+  const outwardName = frontmatterName.length > 0 ? frontmatterName : shortName;
+
   // Generate tool name from path
   const skillFullPath = dirname(args.skillPath);
 
@@ -584,7 +627,7 @@ async function parseSkill(args: {
     toolName: toolName(relativePath),
     license: frontmatter.data.license,
     metadata: frontmatter.data.metadata,
-    name: shortName,
+    name: outwardName,
     path: args.skillPath,
     scripts: createSkillResourceMap(skillFullPath, scriptPaths),
     references: createSkillResourceMap(skillFullPath, referencePaths),

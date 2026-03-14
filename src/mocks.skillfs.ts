@@ -3,6 +3,15 @@ import { mock } from 'bun:test';
 import { Volume } from 'memfs';
 import path from 'node:path';
 
+const mockDebug: boolean = process.env.SKILLFS_MOCK_DEBUG === '1';
+const debugLog = (...args: unknown[]) => {
+  if (!mockDebug) {
+    return;
+  }
+
+  console.log(...args);
+};
+
 mock.module('./lib/SkillFs.ts', async () => {
   const memdisk = Volume.fromJSON(
     {
@@ -20,35 +29,74 @@ This is a test skill.
       './test-skill/Tools/Helper.ts': 'export const helper = true;\n',
       './test-skill/README.md': '# Test Skill\nRoot-level docs.',
 
-      './PAI/SKILL.md': `<!-- generated banner -->
+      './legacy-skill/SKILL.md': `---
+name: CanonicalSkill
+description: Canonical name differs from directory basename for tests.
 ---
-name: CORE
-description: Personal AI Infrastructure core. The authoritative reference for how PAI works.
----
-# PAI Core
+# Legacy Skill
+This skill exists to test canonical identity behavior.
 `,
-      './PAI/Workflows/Onboarding.md': '# Onboarding\n',
-      './PAI/Tools/Inference.ts': 'export const name = "inference";\n',
-      './PAI/CoreStack.md': '# Core Stack\n',
-      './PAI/SYSTEM/PAISYSTEMARCHITECTURE.md': '# Architecture\n',
-      './PAI/Components/10-intro.md': '# Intro\n',
-      './PAI/USER/README.md': '# Sensitive user profile\n',
-      './PAI/WORK/notes.md': '# Work scratch\n',
-      './PAI/node_modules/fake/readme.md': '# Ignore me\n',
+      './legacy-skill/references/guide.md': '# Canonical Guide\nThis is canonical.',
+
+      './phase-a-skill/SKILL.md': `---
+name: CanonicalPhaseA
+description: Canonical phase A skill for resource indexing and canonical lookups.
+---
+# Phase A Skill
+This skill exists to test canonical resource indexing behavior.
+`,
+      './phase-a-skill/Workflows/Onboarding.md': '# Canonical Phase A Onboarding\n',
+      './phase-a-skill/Tools/Runner.ts': 'export const runner = true;\n',
+      './phase-a-skill/README.md': '# Canonical Phase A\n',
+      './phase-a-skill/CoreStack.md': '# Core Stack\n',
+      './phase-a-skill/SYSTEM/ARCHITECTURE.md': '# Architecture\n',
+      './phase-a-skill/Components/10-intro.md': '# Intro\n',
+      './phase-a-skill/USER/README.md': '# Sensitive user profile\n',
+      './phase-a-skill/WORK/notes.md': '# Work scratch\n',
+      './phase-a-skill/node_modules/fake/readme.md': '# Ignore me\n',
+
+      './no-name-skill/SKILL.md': `---
+description: Skill without frontmatter name uses directory basename.
+---
+# No Name Skill
+This skill exists to test basename fallback.
+`,
+      './no-name-skill/references/guide.md': '# Fallback Guide\nThis is fallback.',
+
+      './non-string-name-skill/SKILL.md': `---
+name: 123
+description: Non-string frontmatter name should not crash discovery.
+---
+# Non-string Name Skill
+This skill exists to test a safe fallback.
+`,
+
+      './collision-one/SKILL.md': `---
+name: CollisionSkill
+description: First colliding canonical name for registry init test.
+---
+# Collision One
+`,
+      './collision-two/SKILL.md': `---
+name: collisionskill
+description: Second colliding canonical name differing by case only.
+---
+# Collision Two
+`,
     },
     '/skills'
   );
 
-  const readFile = async (path: string) => {
-    const data = await memdisk.promises.readFile(path, { encoding: 'utf-8' });
+  const readFile = async (filePath: string) => {
+    const data = await memdisk.promises.readFile(filePath, { encoding: 'utf-8' });
     return data.toString();
   };
 
   return {
     // Override file system calls to use memfs
-    doesPathExist: (path: string): boolean => {
-      console.log(`[MOCK] skillfs.doesPathExist`, path);
-      return memdisk.existsSync(path);
+    doesPathExist: (filePath: string): boolean => {
+      debugLog(`[MOCK] skillfs.doesPathExist`, filePath);
+      return memdisk.existsSync(filePath);
     },
 
     /**
@@ -60,12 +108,12 @@ description: Personal AI Infrastructure core. The authoritative reference for ho
      * @see {@link SkillFs}
      */
     findSkillPaths: async (basePath: string) => {
-      console.log(`[MOCK] skillfs.findSkillPaths`, basePath);
+      debugLog(`[MOCK] skillfs.findSkillPaths`, basePath);
       const results = await memdisk.promises.glob('**/SKILL.md', {
         cwd: basePath,
       });
 
-      console.log(`[MOCK] skillfs.findSkillPaths results:`, results);
+      debugLog(`[MOCK] skillfs.findSkillPaths results:`, results);
       return results.map((relativePath) => path.join(basePath, relativePath));
     },
     // Override other FS-dependent functions as needed
@@ -78,7 +126,7 @@ description: Personal AI Infrastructure core. The authoritative reference for ho
      * @see {@link SkillFs}
      */
     listSkillFiles: (skillPath: string, subdirectory: string): string[] => {
-      console.log(`[MOCK] skillfs.listSkillFiles`, skillPath, subdirectory);
+      debugLog(`[MOCK] skillfs.listSkillFiles`, skillPath, subdirectory);
       let results: string[] = [];
       try {
         results = memdisk.globSync('**/*', {
@@ -98,9 +146,9 @@ description: Personal AI Infrastructure core. The authoritative reference for ho
      *
      * @see {@link SkillFs}
      */
-    readSkillFile: (path: string) => {
-      console.log(`[MOCK] skillfs.readSkillFile`, path);
-      return readFile(path);
+    readSkillFile: (filePath: string) => {
+      debugLog(`[MOCK] skillfs.readSkillFile`, filePath);
+      return readFile(filePath);
     },
 
     /**
@@ -110,9 +158,9 @@ description: Personal AI Infrastructure core. The authoritative reference for ho
      *
      * @see {@link SkillFs}
      */
-    readSkillResource: (path: string) => {
-      console.log(`[MOCK] skillfs.readSkillResource`, path);
-      return readFile(path);
+    readSkillResource: (filePath: string) => {
+      debugLog(`[MOCK] skillfs.readSkillResource`, filePath);
+      return readFile(filePath);
     },
 
     /**
@@ -154,4 +202,4 @@ description: Personal AI Infrastructure core. The authoritative reference for ho
   };
 });
 
-console.log('[MOCK] skillfs.mock.ready');
+debugLog('[MOCK] skillfs.mock.ready');

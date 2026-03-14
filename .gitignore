@@ -9,9 +9,10 @@ coverage/
 .eslintcache
 .bun/
 .bun.lockb
+.worktrees/
+MEMORY/
 !.memory/
 in-memoria*
 
 # Dolt database files (added by bd init)
 .dolt/
-*.db

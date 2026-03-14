@@ -2,13 +2,14 @@
 id: codemap01
 title: OpenCode Skillful Codebase Map
 created_at: 2026-02-05
-updated_at: 2026-02-05
+updated_at: 2026-03-14
 area: codebase-structure
 tags:
   - architecture
   - codebase-map
 learned_from:
   - initial analysis
+  - native-first refactor
 ---
 
 # Codebase Codemap
@@ -24,22 +25,22 @@ learned_from:
 │   STARTUP   │─────▶│   INITIALIZE    │─────▶│        READY STATE           │
 │             │      │                 │      │                              │
 │ index.ts    │      │ • getConfig     │      │ Listening for tool calls:    │
-│ Plugin()    │      │ • createApi     │      │ • skill_use                  │
-└─────────────┘      │ • registry.init │      │ • skill_find                 │
-                     └─────────────────┘      │ • skill_resource             │
+│ Plugin()    │      │ • createApi     │      │ • skill_find                 │
+└─────────────┘      │ • registry.init │      │ • skill_resource             │
+                     └─────────────────┘      │ • native `skill` (host)      │
                                               └──────────────────────────────┘
                                                            │
                      ┌─────────────────────────────────────┼─────────────────┐
                      ▼                                     ▼                 ▼
-            ┌────────────────┐               ┌────────────────┐    ┌─────────────────┐
-            │  skill_find    │               │   skill_use    │    │ skill_resource  │
-            │                │               │                │    │                 │
-            │ Query parsing  │               │ Load skills    │    │ Read skill file │
-            │ Skill search   │               │ Inject prompts │    │ Return content  │
-            │ Return results │               │ Track model    │    │                 │
-            └────────────────┘               └────────────────┘    └─────────────────┘
-                     │                                │                      │
-                     └────────────────┬───────────────┴──────────────────────┘
+            ┌────────────────┐               ┌─────────────────┐   ┌─────────────────┐
+            │  skill_find    │               │ skill_resource  │   │ native `skill`  │
+            │                │               │                 │   │ (host-provided) │
+            │ Query parsing  │               │ Read skill file │   │ Load skill text │
+            │ Skill search   │               │ Return content  │   │ into session    │
+            │ Return results │               │ directly        │   │                 │
+            └────────────────┘               └─────────────────┘   └─────────────────┘
+                     │                                │
+                     └────────────────┬───────────────┘
                                       ▼
                           ┌─────────────────────┐
                           │   PromptRenderer    │
@@ -55,7 +56,7 @@ learned_from:
 
 ```
 src/
-├── index.ts                 # Plugin entry point, tool definitions
+├── index.ts                 # Plugin entry point, tool definitions, guidance hook
 ├── api.ts                   # Factory - wires components together
 ├── config.ts                # Plugin configuration loading
 ├── types.ts                 # Type definitions
@@ -69,13 +70,13 @@ src/
 │
 ├── tools/
 │   ├── SkillFinder.ts       # skill_find tool creator
-│   ├── SkillUser.ts         # skill_use tool creator
 │   └── SkillResourceReader.ts  # skill_resource tool creator
 │
 └── lib/
     ├── SkillFs.ts           # Filesystem operations
-    ├── OpenCodeChat.ts      # Message injection
     ├── Identifiers.ts       # ID generation utilities
+    ├── ReadyStateMachine.ts # Async readiness coordination
+    ├── nativeSkillGuidance.ts # Compact native-first guidance text
     ├── getModelFormat.ts    # Model-aware format selection
     ├── createPromptRenderer.ts  # Renderer factory
     ├── xml.ts               # XML utilities
@@ -90,7 +91,8 @@ src/
 ```
 ┌─────────────────┐
 │ Tool Invocation │
-│ (skill_use)     │
+│ (skill_find /   │
+│  skill_resource)│
 └────────┬────────┘
          │
          ▼
@@ -100,7 +102,7 @@ src/
          │
          ▼
 ┌─────────────────┐     ┌─────────────────┐
-│ SkillRegistry   │────▶│ Lookup Skill    │
+│ SkillRegistry   │────▶│ Lookup / Search │
 └────────┬────────┘     └─────────────────┘
          │
          ▼
@@ -110,8 +112,9 @@ src/
          │
          ▼
 ┌─────────────────┐
-│ OpenCodeChat    │
-│ (inject prompt) │
+│ Direct tool     │
+│ return / prompt │
+│ output          │
 └─────────────────┘
 ```
 
@@ -119,12 +122,12 @@ src/
 
 ```
 Skill {
-  toolName: string      # Unique identifier (path-based)
-  name: string          # Display name from frontmatter
+  toolName: string      # Stable internal identifier (path-based)
+  name: string          # Canonical outward-facing name
   description: string   # From frontmatter
   content: string       # Markdown content
-  skillPath: string     # Absolute path to SKILL.md
-  basePath: string      # Base directory for resolution
+  path: string          # Absolute path to SKILL.md
+  fullPath: string      # Base directory for resolution
   scripts: Map          # Available scripts
   assets: Map           # Available assets
   references: Map       # Reference files
@@ -132,8 +135,8 @@ Skill {
 
 SkillRegistry {
   initialise()          # Discover and parse all skills
-  find(query)           # Search skills
-  get(toolName)         # Get single skill
+  search(query)         # Search skills
+  get(idOrAlias)        # Get single skill via canonical/legacy alias
   skills: Skill[]       # All registered skills
 }
 ```

@@ -2,16 +2,13 @@
  * XmlPromptRenderer Tests
  *
  * Test coverage for real use cases:
- * - Rendering Skill objects as XML with resource maps converted to arrays
  * - Rendering SkillResource objects (file content)
  * - Rendering SkillSearchResults objects
  * - XML character escaping for security
- * - Resource map serialization
  */
 
-import { describe, it, expect } from 'vitest';
-import { createXmlPromptRenderer } from './XmlPromptRenderer';
-import type { Skill } from '../../types';
+import { describe, expect, it } from 'vitest';
+import { createXmlPromptRenderer } from './XmlPromptRenderer.ts';
 
 describe('XmlPromptRenderer', () => {
   const renderer = createXmlPromptRenderer();
@@ -20,18 +17,8 @@ describe('XmlPromptRenderer', () => {
     expect(renderer.format).toBe('xml');
   });
 
-  it('should render Skill object as XML with resource maps', () => {
-    const references = new Map([
-      [
-        'api-guide.md',
-        {
-          absolutePath: '/skills/api/references/api-guide.md',
-          mimeType: 'text/markdown',
-        },
-      ],
-    ]);
-
-    const skill: Skill = {
+  it('should reject Skill objects (full-skill rendering removed)', () => {
+    const skill = {
       name: 'rest-api',
       fullPath: '/skills/rest-api',
       toolName: 'skill_rest_api',
@@ -39,18 +26,15 @@ describe('XmlPromptRenderer', () => {
       content: 'REST API patterns content',
       path: '/skills/rest-api/SKILL.md',
       scripts: new Map(),
-      references,
+      references: new Map(),
       assets: new Map(),
     };
 
-    const result = renderer.render({ data: skill, type: 'Skill' });
-
-    expect(result).toContain('<Skill>');
-    expect(result).toContain('</Skill>');
-    expect(result).toContain('<name>rest-api</name>');
-    expect(result).toContain('<description>REST API design patterns</description>');
-    expect(result).toContain('<references>');
-    expect(result).toContain('api-guide.md');
+    expect(() =>
+      renderer.render({ data: skill, type: 'Skill' } as unknown as Parameters<
+        typeof renderer.render
+      >[0])
+    ).toThrow(/Unsupported render type/);
   });
 
   it('should render SkillResource object (file content)', () => {
@@ -81,6 +65,7 @@ describe('XmlPromptRenderer', () => {
         total: 20,
         matches: 2,
         feedback: 'Found 2 skills matching "testing"',
+        usage_hint: 'Load with: skill name="unit-testing"',
       },
     };
 
@@ -93,6 +78,29 @@ describe('XmlPromptRenderer', () => {
     expect(result).toContain('<name>unit-testing</name>');
     expect(result).toContain('<name>integration-testing</name>');
     expect(result).toContain('<matches>2</matches>');
+
+    // Contract: arrays are rendered as repeated elements (one <skills> per item).
+    expect((result.match(/<skills>/g) ?? []).length).toBe(2);
+  });
+
+  it('should render usage_hint in SkillSearchResults summary', () => {
+    const data = {
+      query: 'testing',
+      skills: [{ name: 'unit-testing', description: 'Unit testing best practices' }],
+      summary: {
+        total: 20,
+        matches: 1,
+        feedback: 'Found 1 skill matching "testing"',
+        usage_hint: 'Load with: skill name="unit-testing"',
+      },
+    };
+
+    const result = renderer.render({ data, type: 'SkillSearchResults' } as unknown as Parameters<
+      typeof renderer.render
+    >[0]);
+
+    expect(result).toContain('<usage_hint>');
+    expect(result).toContain('Load with: skill name=&quot;unit-testing&quot;');
   });
 
   it('should escape special XML characters for security', () => {
@@ -111,56 +119,23 @@ describe('XmlPromptRenderer', () => {
     expect(result).not.toContain('<tags>');
   });
 
-  it('should handle Skill with multiple resource types', () => {
-    const references = new Map([
-      ['guide.md', { absolutePath: '/skills/test/references/guide.md', mimeType: 'text/markdown' }],
-    ]);
-
-    const scripts = new Map([
-      ['setup.sh', { absolutePath: '/skills/test/scripts/setup.sh', mimeType: 'application/x-sh' }],
-    ]);
-
-    const skill: Skill = {
-      name: 'complex-skill',
-      fullPath: '/skills/complex-skill',
-      toolName: 'skill_complex',
-      description: 'Skill with multiple resources',
-      content: 'Content',
-      path: '/skills/complex-skill/SKILL.md',
-      scripts,
-      references,
-      assets: new Map(),
+  it('should omit undefined optional fields from SkillSearchResults output', () => {
+    const data = {
+      query: 'testing',
+      skills: [{ name: 'unit-testing', description: 'Unit testing best practices' }],
+      summary: {
+        total: 20,
+        matches: 1,
+        feedback: 'Found 1 skill matching "testing"',
+        usage_hint: 'Load with: skill name="unit-testing"',
+      },
+      debug: undefined,
     };
 
-    const result = renderer.render({ data: skill, type: 'Skill' });
+    const result = renderer.render({ data, type: 'SkillSearchResults' });
 
-    expect(result).toContain('<Skill>');
-    expect(result).toContain('<references>');
-    expect(result).toContain('<scripts>');
-    expect(result).toContain('guide.md');
-    expect(result).toContain('setup.sh');
+    expect(result).not.toContain('<debug');
   });
 
-  it('should handle Skill with empty resource maps', () => {
-    const skill: Skill = {
-      name: 'minimal-skill',
-      fullPath: '/skills/minimal',
-      toolName: 'skill_minimal',
-      description: 'Skill without resources',
-      content: 'Content',
-      path: '/skills/minimal/SKILL.md',
-      scripts: new Map(),
-      references: new Map(),
-      assets: new Map(),
-    };
-
-    const result = renderer.render({ data: skill, type: 'Skill' });
-
-    expect(result).toContain('<Skill>');
-    expect(result).toContain('<name>minimal-skill</name>');
-    expect(() => {
-      // Verify it's valid XML by checking structure
-      expect(result).toMatch(/<Skill>[\s\S]*<\/Skill>/);
-    }).not.toThrow();
-  });
+  // Full Skill rendering was removed in favor of SkillResource + SkillSearchResults only.
 });

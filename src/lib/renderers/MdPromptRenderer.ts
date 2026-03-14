@@ -15,10 +15,7 @@
  * - Skill content → appended after --- separator with ### Content heading
  */
 
-import dedent from 'dedent';
-import type { PromptRenderer, SkillResource, SkillSearchResult } from '../../types';
-import type { Skill } from '../../types';
-import { resourceMapToArray } from './resourceMapToArray';
+import type { PromptRenderer, SkillResourceInjection, SkillSearchResults } from '../../types.ts';
 
 export const createMdPromptRenderer = (): PromptRenderer => {
   /**
@@ -44,7 +41,7 @@ export const createMdPromptRenderer = (): PromptRenderer => {
 
       // Add heading for this key
       const heading = '#'.repeat(headingLevel);
-      output += `${heading} ${key}`;
+      output += `${heading} ${key}\n`;
 
       if (typeof value === 'object' && !Array.isArray(value)) {
         // Nested object - recurse with increased heading level
@@ -60,7 +57,7 @@ export const createMdPromptRenderer = (): PromptRenderer => {
         // Leaf node - render as list item
         const indent = '  '.repeat(indentLevel);
         const escapedValue = htmlEscape(String(value));
-        output += `${indent}- **${key}**: *${escapedValue}*`;
+        output += `${indent}- **${key}**: *${escapedValue}*\n`;
       }
 
       output += '\n'; // Add spacing between items
@@ -136,37 +133,12 @@ export const createMdPromptRenderer = (): PromptRenderer => {
       .replace(/'/g, '&#39;');
   };
 
-  const renderSkill = (skill: Skill): string => {
-    // Add any skill-specific preparation logic here if needed
-    return dedent`
-      # ${skill.name}
-
-      ${skill.content}
-
-      ## Metadata
-
-      ${skill.metadata ? renderObject(skill.metadata, 3) : ''}
- 
-      ## References
-
-      ${skill.references ? renderArray(resourceMapToArray(skill.references), 1) : ''}
-
-      ## Scripts
-
-      ${skill.scripts ? renderArray(resourceMapToArray(skill.scripts), 1) : ''}
-
-      ## Assets
-
-      ${skill.assets ? renderArray(resourceMapToArray(skill.assets), 1) : ''}
-    `;
-  };
-
-  const renderResource = (resource: SkillResource): string => {
+  const renderResource = (resource: SkillResourceInjection): string => {
     // Add any resource-specific preparation logic here if needed
     return renderObject(resource, 3);
   };
 
-  const renderSearchResult = (result: SkillSearchResult): string => {
+  const renderSearchResult = (result: SkillSearchResults): string => {
     // Add any search result-specific preparation logic here if needed
     return renderObject(result, 3);
   };
@@ -174,10 +146,6 @@ export const createMdPromptRenderer = (): PromptRenderer => {
   const renderer: PromptRenderer = {
     format: 'md' as const,
     render(args) {
-      if (args.type === 'Skill') {
-        return renderSkill(args.data);
-      }
-
       if (args.type === 'SkillResource') {
         return renderResource(args.data);
       }
@@ -186,8 +154,7 @@ export const createMdPromptRenderer = (): PromptRenderer => {
         return renderSearchResult(args.data);
       }
 
-      // Fallback for other types - render generically
-      return renderObject({}, 3);
+      throw new Error('Unsupported render type');
     },
   };
 

@@ -8,7 +8,7 @@
  * RESPONSIBILITY: This is the only place that knows how to wire together:
  * - Logger (for debug output)
  * - SkillRegistry (for discovery and parsing)
- * - Tool creators (functions that create skill_find, skill_use, skill_resource)
+ * - Tool creators (functions that create skill_find, skill_resource)
  * - PromptRenderer (for format selection and rendering)
  *
  * INITIALIZATION TIMING (CRITICAL):
@@ -26,11 +26,10 @@
  * - config: PluginConfig (needed for model-aware format selection)
  * - findSkills: Tool creator function for skill search
  * - readResource: Tool creator function for resource reading
- * - loadSkill: Tool creator function for skill loading
  *
  * EXAMPLE:
  *   const api = await createApi(config);
- *   const { registry, config, findSkills, readResource, loadSkill } = api;
+ *   const { registry, config, findSkills, readResource } = api;
  *   // Note: registry is created but NOT yet initialized
  *   // Must be done by caller: await registry.initialise()
  */
@@ -39,7 +38,6 @@ import { createLogger } from './services/logger';
 import { createSkillRegistry } from './services/SkillRegistry';
 import { createSkillFinder } from './tools/SkillFinder';
 import { createSkillResourceReader } from './tools/SkillResourceReader';
-import { createSkillLoader } from './tools/SkillUser';
 import type { PluginConfig } from './types';
 
 export const createApi = async (config: PluginConfig) => {
@@ -52,6 +50,5 @@ export const createApi = async (config: PluginConfig) => {
     config,
     findSkills: createSkillFinder(registry),
     readResource: createSkillResourceReader(registry),
-    loadSkill: createSkillLoader(registry),
   };
 };

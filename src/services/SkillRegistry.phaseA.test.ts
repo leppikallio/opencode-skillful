@@ -1,4 +1,5 @@
 import { describe, test, expect } from 'bun:test';
+import '../mocks.skillfs';
 import { createSkillRegistry } from './SkillRegistry';
 
 describe('SkillRegistry Phase A resource indexing', () => {
@@ -26,21 +27,32 @@ describe('SkillRegistry Phase A resource indexing', () => {
     expect(skill?.resources?.has('SKILL.md')).toBe(false);
   });
 
-  test('adds PAI-specific SYSTEM and Components markdown resources', async () => {
+  test('indexes generic unified resources for phase-a fixture skill', async () => {
     const registry = await createRegistry();
-    const skill = registry.controller.get('PAI');
+    const skill = registry.controller.get('phase_a_skill');
 
     expect(skill).toBeDefined();
     expect(skill?.resources?.has('Workflows/Onboarding.md')).toBe(true);
-    expect(skill?.resources?.has('Tools/Inference.ts')).toBe(true);
+    expect(skill?.resources?.has('Tools/Runner.ts')).toBe(true);
     expect(skill?.resources?.has('CoreStack.md')).toBe(true);
-    expect(skill?.resources?.has('SYSTEM/PAISYSTEMARCHITECTURE.md')).toBe(true);
-    expect(skill?.resources?.has('Components/10-intro.md')).toBe(true);
+    expect(skill?.resources?.has('README.md')).toBe(true);
+    expect(skill?.resources?.has('SYSTEM/ARCHITECTURE.md')).toBe(false);
+    expect(skill?.resources?.has('Components/10-intro.md')).toBe(false);
+  });
+
+  test('indexes resources even when addressed by frontmatter canonical name', async () => {
+    const registry = await createRegistry();
+    const skill = registry.controller.get('CanonicalPhaseA');
+
+    expect(skill).toBeDefined();
+    expect(skill?.resources?.has('Workflows/Onboarding.md')).toBe(true);
+    expect(skill?.resources?.has('Tools/Runner.ts')).toBe(true);
+    expect(skill?.resources?.has('README.md')).toBe(true);
   });
 
   test('applies exclusion guardrails to indexed resources', async () => {
     const registry = await createRegistry();
-    const skill = registry.controller.get('PAI');
+    const skill = registry.controller.get('phase_a_skill');
 
     expect(skill).toBeDefined();
     expect(skill?.resources?.has('USER/README.md')).toBe(false);

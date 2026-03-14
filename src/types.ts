@@ -2,7 +2,7 @@
  * Type definitions for OpenCode Skills Plugin
  */
 
-import { ReadyStateMachine } from './lib/ReadyStateMachine';
+import { ReadyStateMachine } from './lib/ReadyStateMachine.ts';
 
 /**
  * PromptRenderer Interface - Provider Pattern for Prompt Injection Formatting
@@ -21,24 +21,23 @@ import { ReadyStateMachine } from './lib/ReadyStateMachine';
  * enabling easy format additions without changing plugin code.
  */
 
-type SkillInjectionResult = {
+export type SkillResourceInjection = {
   skill_name: string;
   resource_path: string;
   resource_mimetype: string;
   content: string;
 };
 
-type SkillSearchResultInjection = {
+export type SkillSearchResults = {
   query: string | string[];
   skills: Array<{ name: string; description: string }>;
-  summary: { total: number; matches: number; feedback: string };
+  summary: { total: number; matches: number; feedback: string; usage_hint: string };
   debug?: SkillRegistryDebugInfo;
 };
 
 type Args =
-  | { data: Skill; type: 'Skill' }
-  | { data: SkillInjectionResult; type: 'SkillResource' }
-  | { data: SkillSearchResultInjection; type: 'SkillSearchResults' };
+  | { data: SkillResourceInjection; type: 'SkillResource' }
+  | { data: SkillSearchResults; type: 'SkillSearchResults' };
 
 export interface PromptRenderer {
   /**
@@ -46,7 +45,7 @@ export interface PromptRenderer {
    *
    * @param data The object to render (typically skill metadata or search results)
    * @param rootElement Optional element name (used for XML rendering as root tag)
-   * @returns Formatted string ready for prompt injection
+   * @returns Formatted string ready for tool output or model-facing guidance
    */
   render(args: Args): string;
 

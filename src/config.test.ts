@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { expandTildePath, getOpenCodeConfigPaths } from './config';
+import { expandTildePath, getOpenCodeConfigPaths } from './config.ts';
 
 describe('expandTildePath', () => {
   describe('tilde expansion', () => {

@@ -2,16 +2,14 @@
  * MdPromptRenderer Tests
  *
  * Test coverage for real use cases:
- * - Rendering Skill objects with metadata, references, scripts, assets
  * - Rendering SkillResource objects (file content)
  * - Rendering SkillSearchResults objects
  * - HTML character escaping for security
  * - Special values handling (null, undefined)
  */
 
-import { describe, it, expect } from 'vitest';
-import { createMdPromptRenderer } from './MdPromptRenderer';
-import type { Skill } from '../../types';
+import { describe, expect, it } from 'vitest';
+import { createMdPromptRenderer } from './MdPromptRenderer.ts';
 
 describe('MdPromptRenderer', () => {
   const renderer = createMdPromptRenderer();
@@ -20,8 +18,8 @@ describe('MdPromptRenderer', () => {
     expect(renderer.format).toBe('md');
   });
 
-  it('should render Skill object with metadata and resources', () => {
-    const skill: Skill = {
+  it('should reject Skill objects (full-skill rendering removed)', () => {
+    const skill = {
       name: 'git-workflows',
       fullPath: '/home/user/.opencode/skills/git-workflows',
       toolName: 'skill_git_workflows',
@@ -34,14 +32,11 @@ describe('MdPromptRenderer', () => {
       metadata: { version: '1.0.0', author: 'Team' },
     };
 
-    const result = renderer.render({ data: skill, type: 'Skill' });
-
-    expect(result).toContain('# git-workflows');
-    expect(result).toContain('Git Workflows');
-    expect(result).toContain('## Metadata');
-    expect(result).toContain('## References');
-    expect(result).toContain('## Scripts');
-    expect(result).toContain('## Assets');
+    expect(() =>
+      renderer.render({ data: skill, type: 'Skill' } as unknown as Parameters<
+        typeof renderer.render
+      >[0])
+    ).toThrow(/Unsupported render type/);
   });
 
   it('should render SkillResource object (file content)', () => {
@@ -54,10 +49,17 @@ describe('MdPromptRenderer', () => {
 
     const result = renderer.render({ data, type: 'SkillResource' });
 
-    expect(result).toContain('skill_name');
-    expect(result).toContain('api-design');
-    expect(result).toContain('rest-guidelines.md');
-    expect(result).toContain('REST Guidelines content here');
+    expect(result).toContain('### skill_name\n- **skill_name**: *api-design*');
+    expect(result).toContain(
+      '### resource_path\n- **resource_path**: *references/rest-guidelines.md*'
+    );
+    expect(result).toContain('### resource_mimetype\n- **resource_mimetype**: *text/markdown*');
+    expect(result).toContain('### content\n- **content**: *REST Guidelines content here*');
+
+    // Lean contract: resource injection contains only these fields.
+    expect(result).not.toContain('fullPath');
+    expect(result).not.toContain('toolName');
+    expect(result).not.toContain('scripts');
   });
 
   it('should render SkillSearchResults object', () => {
@@ -71,15 +73,42 @@ describe('MdPromptRenderer', () => {
         total: 15,
         matches: 2,
         feedback: 'Found 2 skills matching "authentication"',
+        usage_hint: 'Load with: skill name="oauth-setup"',
       },
     };
 
     const result = renderer.render({ data, type: 'SkillSearchResults' });
 
-    expect(result).toContain('oauth-setup');
-    expect(result).toContain('jwt-patterns');
-    expect(result).toContain('2');
-    expect(result).toContain('authentication');
+    expect(result).toContain('### query\n- **query**: *authentication*');
+    expect(result).toContain('### skills');
+    expect(result).toContain('- **name**: *oauth-setup*');
+    expect(result).toContain('- **name**: *jwt-patterns*');
+    expect(result).toContain('### summary');
+    expect(result).toContain('- **matches**: *2*');
+
+    // Lean contract: search results list only name + description.
+    expect(result).not.toContain('fullPath');
+    expect(result).not.toContain('toolName');
+  });
+
+  it('should preserve usage_hint in SkillSearchResults payload', () => {
+    const data = {
+      query: 'authentication',
+      skills: [{ name: 'oauth-setup', description: 'OAuth implementation guide' }],
+      summary: {
+        total: 15,
+        matches: 1,
+        feedback: 'Found 1 skill matching "authentication"',
+        usage_hint: 'Load with: skill name="oauth-setup"',
+      },
+    };
+
+    const result = renderer.render({ data, type: 'SkillSearchResults' } as unknown as Parameters<
+      typeof renderer.render
+    >[0]);
+
+    expect(result).toContain('usage_hint');
+    expect(result).toContain('Load with: skill name=&quot;oauth-setup&quot;');
   });
 
   it('should HTML-escape special characters for security', () => {
@@ -105,6 +134,7 @@ describe('MdPromptRenderer', () => {
         total: 10,
         matches: 1,
         feedback: 'Found 1 skill',
+        usage_hint: 'Load with: skill name="skill1"',
       },
       debug: undefined,
     };
@@ -116,52 +146,21 @@ describe('MdPromptRenderer', () => {
     expect(result).not.toContain('debug');
   });
 
-  it('should handle Skill with optional metadata', () => {
-    const skill: Skill = {
-      name: 'minimal-skill',
-      fullPath: '/path/to/skill',
-      toolName: 'minimal_skill',
-      description: 'Minimal skill without metadata',
-      content: '# Content',
-      path: '/path/to/skill/SKILL.md',
-      scripts: new Map(),
-      references: new Map(),
-      assets: new Map(),
+  it('should omit undefined optional fields from SkillSearchResults output', () => {
+    const data = {
+      query: 'test',
+      skills: [{ name: 'skill1', description: 'Test skill' }],
+      summary: {
+        total: 10,
+        matches: 1,
+        feedback: 'Found 1 skill',
+        usage_hint: 'Load with: skill name="skill1"',
+      },
+      debug: undefined,
     };
 
-    const result = renderer.render({ data: skill, type: 'Skill' });
+    const result = renderer.render({ data, type: 'SkillSearchResults' });
 
-    expect(result).toContain('minimal-skill');
-    expect(result).toContain('# Content');
-    expect(result).toContain('## Metadata');
-  });
-
-  it('should render Skill with resource maps', () => {
-    const references = new Map([
-      [
-        'guide.md',
-        {
-          absolutePath: '/skills/git/references/guide.md',
-          mimeType: 'text/markdown',
-        },
-      ],
-    ]);
-
-    const skill: Skill = {
-      name: 'git-skill',
-      fullPath: '/skills/git',
-      toolName: 'skill_git',
-      description: 'Git patterns',
-      content: '# Git',
-      path: '/skills/git/SKILL.md',
-      scripts: new Map(),
-      references,
-      assets: new Map(),
-    };
-
-    const result = renderer.render({ data: skill, type: 'Skill' });
-
-    expect(result).toContain('git-skill');
-    expect(result).toContain('References');
+    expect(result).not.toContain('debug');
   });
 });
